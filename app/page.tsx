@@ -716,10 +716,16 @@ export default function Home() {
           <a href="#history">处理记录</a>
           <a href="#help">使用帮助</a>
         </nav>
-        <a className="header-action" href="#tool">
-          开始处理
-          <span>→</span>
-        </a>
+        <div className="header-actions">
+          <a className="header-action start-action" href="#tool">
+            开始处理
+            <span>→</span>
+          </a>
+          <a className="header-action save-action" href="#batch-actions">
+            保存下载
+            <span>↓</span>
+          </a>
+        </div>
       </header>
 
       <section className="workspace-shell">

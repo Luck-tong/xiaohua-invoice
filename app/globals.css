@@ -51,7 +51,7 @@ button {
   width: min(1200px, calc(100% - 48px));
   height: 64px;
   display: grid;
-  grid-template-columns: 220px 1fr 220px;
+  grid-template-columns: 180px 1fr auto;
   align-items: center;
   position: sticky;
   top: 10px;
@@ -63,6 +63,12 @@ button {
   background: rgba(255, 255, 255, 0.82);
   box-shadow: 0 12px 35px rgba(33, 49, 94, 0.08);
   backdrop-filter: blur(18px);
+}
+
+.header-actions {
+  justify-self: end;
+  display: flex;
+  gap: 8px;
 }
 
 .brand {
@@ -106,10 +112,9 @@ button {
 }
 
 .header-action {
-  justify-self: end;
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 12px;
   padding: 10px 15px;
   border: 1px solid #d9deea;
   border-radius: 8px;
@@ -117,6 +122,18 @@ button {
   text-decoration: none;
   font-size: 13px;
   font-weight: 700;
+}
+
+.save-action {
+  border-color: transparent;
+  color: #fff;
+  background: linear-gradient(135deg, var(--blue), var(--cyan));
+}
+
+.header-action.save-action:hover {
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(66, 99, 235, 0.2);
 }
 
 .header-action:hover {
@@ -1477,6 +1494,10 @@ button {
     gap: 14px;
   }
 
+  .start-action {
+    display: none;
+  }
+
   .hero {
     padding: 52px 14px 0;
   }
@@ -1730,6 +1751,7 @@ body {
 }
 
 .batch-sidebar {
+  scroll-margin-top: 92px;
   position: sticky;
   top: 92px;
 }
