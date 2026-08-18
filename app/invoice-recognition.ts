@@ -140,9 +140,12 @@ export function extractInvoiceItemName(text: string) {
   if (!standardized) return "";
 
   const category = standardized[1].replace(/[：:，,、-]+$/g, "");
-  const name = standardized[2]
+  let name = standardized[2]
     .replace(/^(规格型号|单位|数量|单价|金额|税率|征收率|税额)+/g, "")
     .replace(/[：:，,、-]+$/g, "");
+  if (/规格型号/.test(itemText.slice(0, 80))) {
+    name = name.replace(/无$/, "");
+  }
   return category && name ? `${category}-${name}` : "";
 }
 

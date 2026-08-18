@@ -38,6 +38,15 @@ test("keeps the full standardized platform-service item name", () => {
   );
 });
 
+test("excludes a standalone specification value from the item name", () => {
+  const text = `项目名称 规格型号 单位 数量 单价 金额
+    *生产生活服务*餐饮费 无 1 205.66 205.66 合计 218.00`;
+  assert.equal(
+    classifyInvoice(text, "普通发票.pdf"),
+    "生产生活服务-餐饮费",
+  );
+});
+
 test("keeps the exact platform usage item name from the full invoice text", () => {
   const text = `电子发票（普通发票）
     购买方名称：上海市建纬律师事务所
