@@ -48,6 +48,14 @@ type HistoryEntry = {
   action?: "save" | "zip" | "excel" | "merge";
 };
 
+type PreviewDialog = {
+  title: string;
+  items: InvoiceFile[];
+  mode: "single" | "duplicates";
+  activeId?: string;
+  duplicateNumber?: string;
+};
+
 const HISTORY_KEY = "piaoli-download-history";
 
 declare global {
@@ -143,6 +151,22 @@ function recognitionErrorMessage(error: unknown) {
   return message.trim().slice(0, 80) || "无法读取该文件";
 }
 
+function InvoiceDocumentPreview({ item }: { item: InvoiceFile }) {
+  const [url, setUrl] = useState("");
+
+  useEffect(() => {
+    const nextUrl = URL.createObjectURL(item.file);
+    setUrl(nextUrl);
+    return () => URL.revokeObjectURL(nextUrl);
+  }, [item]);
+
+  if (!url) return <div className="invoice-preview-loading">正在打开原票…</div>;
+  if (/\.pdf$/i.test(item.file.name)) {
+    return <iframe src={url} title={`查看 ${item.file.name}`} />;
+  }
+  return <img src={url} alt={item.file.name} />;
+}
+
 function formatHistoryTime(value: string) {
   return new Intl.DateTimeFormat("zh-CN", {
     year: "numeric",
@@ -186,6 +210,7 @@ export default function Home() {
   const [folderCategories, setFolderCategories] = useState<Set<string>>(
     () => new Set(),
   );
+  const [previewDialog, setPreviewDialog] = useState<PreviewDialog | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const processingQueueRef = useRef(createTaskQueue(3));
 
@@ -234,6 +259,15 @@ export default function Home() {
         .map(([number]) => number),
     );
   }, [invoiceFiles]);
+
+  const duplicateGroups = useMemo(
+    () =>
+      [...duplicateNumbers].map((number) => ({
+        number,
+        items: invoiceFiles.filter((item) => item.number === number),
+      })),
+    [duplicateNumbers, invoiceFiles],
+  );
 
   const historyNumbers = useMemo(() => {
     const numbers = new Set<string>();
@@ -350,7 +384,12 @@ export default function Home() {
           return;
         }
 
-        const children = extracted.map((file) => createItem(file, item.file.name));
+        const children = extracted.map(({ file, sourcePath }) =>
+          createItem(
+            file,
+            sourcePath ? `${item.file.name} › ${sourcePath}` : item.file.name,
+          ),
+        );
         setFiles((current) => {
           const index = current.findIndex((candidate) => candidate.id === item.id);
           if (index < 0) return current;
@@ -703,6 +742,18 @@ export default function Home() {
     }
   }
 
+  const activePreviewItem = previewDialog?.items.find(
+    (item) => item.id === previewDialog.activeId,
+  ) ?? previewDialog?.items[0];
+  const previewDuplicateNumbers = previewDialog?.mode === "duplicates"
+    ? [...new Set(previewDialog.items.map((item) => item.number))]
+    : [];
+  const comparedPreviewItems = previewDialog?.mode === "duplicates"
+    ? previewDialog.items.filter(
+        (item) => item.number === previewDialog.duplicateNumber,
+      )
+    : [];
+
   return (
     <main>
       <header className="site-header">
@@ -908,15 +959,32 @@ export default function Home() {
                           <div className="file-main">
                             <div className="file-name">
                               <strong title={item.file.name}>{item.file.name}</strong>
-                              <span>
-                                {item.method === "pdf-text"
-                                  ? "PDF文字读取"
-                                  : item.method === "ocr"
-                                    ? "OCR识别"
-                                    : statusText(item)}
-                                {" · "}
-                                {formatSize(item.file.size)}
-                              </span>
+                              <div className="file-origin-actions">
+                                <span>
+                                  {item.method === "pdf-text"
+                                    ? "PDF文字读取"
+                                    : item.method === "ocr"
+                                      ? "OCR识别"
+                                      : statusText(item)}
+                                  {" · "}
+                                  {formatSize(item.file.size)}
+                                  {" · 来源："}
+                                  {item.source || "直接添加"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setPreviewDialog({
+                                      title: "查看发票原件",
+                                      items: [item],
+                                      mode: "single",
+                                      activeId: item.id,
+                                    })
+                                  }
+                                >
+                                  查看原票
+                                </button>
+                              </div>
                             </div>
                             {(duplicateInBatch || duplicateInHistory) && (
                               <div className="duplicate-alert" role="status">
@@ -1021,21 +1089,66 @@ export default function Home() {
               <small>{invoiceFiles.length ? `${invoiceFiles.length} 份文件` : "等待添加文件"}</small>
             </div>
             <div className="batch-stats">
-              <article><span>已识别</span><strong>{downloadableFiles.length}</strong></article>
-              <article><span>已勾选</span><strong>{selectedReadyFiles.length}</strong></article>
+              <button
+                type="button"
+                disabled={downloadableFiles.length === 0}
+                onClick={() =>
+                  setPreviewDialog({
+                    title: "查看已识别发票",
+                    items: downloadableFiles,
+                    mode: "single",
+                    activeId: downloadableFiles[0]?.id,
+                  })
+                }
+              ><span>已识别 · 点击查看</span><strong>{downloadableFiles.length}</strong></button>
+              <button
+                type="button"
+                disabled={selectedReadyFiles.length === 0}
+                onClick={() =>
+                  setPreviewDialog({
+                    title: "查看已勾选发票",
+                    items: selectedReadyFiles,
+                    mode: "single",
+                    activeId: selectedReadyFiles[0]?.id,
+                  })
+                }
+              ><span>已勾选 · 点击查看</span><strong>{selectedReadyFiles.length}</strong></button>
               <article className="amount-stat"><span>已选金额</span><strong>¥{selectedAmountTotal}</strong></article>
-              <article className={duplicateNumbers.size ? "warning-stat" : ""}>
-                <span>重复号码</span><strong>{duplicateNumbers.size}</strong>
-              </article>
+              <button
+                type="button"
+                className={duplicateNumbers.size ? "warning-stat" : ""}
+                disabled={duplicateNumbers.size === 0}
+                onClick={() =>
+                  setPreviewDialog({
+                    title: "重复发票对比",
+                    items: duplicateGroups.flatMap((group) => group.items),
+                    mode: "duplicates",
+                    duplicateNumber: duplicateGroups[0]?.number,
+                  })
+                }
+              >
+                <span>重复号码 · 点击对比</span><strong>{duplicateNumbers.size}</strong>
+              </button>
             </div>
             {groupedInvoiceFiles.length > 0 && (
               <div className="category-summary" aria-label="发票分类汇总">
                 <span>分类汇总</span>
                 <div>
                   {groupedInvoiceFiles.map((group) => (
-                    <small key={group.category}>
+                    <button
+                      type="button"
+                      key={group.category}
+                      onClick={() =>
+                        setPreviewDialog({
+                          title: group.category,
+                          items: group.files,
+                          mode: "single",
+                          activeId: group.files[0]?.id,
+                        })
+                      }
+                    >
                       {group.category}<strong>{group.files.length}</strong>
-                    </small>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -1187,6 +1300,90 @@ export default function Home() {
                 </button>
               </div>
             </div>
+          </section>
+        </div>
+      )}
+
+      {previewDialog && (
+        <div
+          className="invoice-preview-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setPreviewDialog(null);
+          }}
+        >
+          <section
+            className="invoice-preview-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="invoice-preview-title"
+          >
+            <div className="invoice-preview-heading">
+              <div>
+                <span>原票核对</span>
+                <h2 id="invoice-preview-title">{previewDialog.title}</h2>
+              </div>
+              <button
+                type="button"
+                aria-label="关闭发票预览"
+                onClick={() => setPreviewDialog(null)}
+              >×</button>
+            </div>
+
+            {previewDialog.mode === "duplicates" ? (
+              <>
+                <div className="duplicate-number-tabs">
+                  {previewDuplicateNumbers.map((number) => (
+                    <button
+                      type="button"
+                      className={number === previewDialog.duplicateNumber ? "active" : ""}
+                      key={number}
+                      onClick={() =>
+                        setPreviewDialog((current) =>
+                          current ? { ...current, duplicateNumber: number } : current,
+                        )
+                      }
+                    >
+                      {number}
+                    </button>
+                  ))}
+                </div>
+                <div className="duplicate-preview-grid">
+                  {comparedPreviewItems.map((item) => (
+                    <article key={item.id}>
+                      <div className="invoice-preview-meta">
+                        <strong title={item.file.name}>{item.file.name}</strong>
+                        <span>来源：{item.source || "直接添加"}</span>
+                      </div>
+                      <InvoiceDocumentPreview item={item} />
+                    </article>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="single-preview-layout">
+                <div className="invoice-preview-list">
+                  {previewDialog.items.map((item) => (
+                    <button
+                      type="button"
+                      className={item.id === activePreviewItem?.id ? "active" : ""}
+                      key={item.id}
+                      onClick={() =>
+                        setPreviewDialog((current) =>
+                          current ? { ...current, activeId: item.id } : current,
+                        )
+                      }
+                    >
+                      <strong title={item.file.name}>{item.file.name}</strong>
+                      <span>来源：{item.source || "直接添加"}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="single-preview-document">
+                  {activePreviewItem && <InvoiceDocumentPreview item={activePreviewItem} />}
+                </div>
+              </div>
+            )}
           </section>
         </div>
       )}
