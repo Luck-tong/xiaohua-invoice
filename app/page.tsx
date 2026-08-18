@@ -19,6 +19,7 @@ import { filterFilesByCategories } from "./category-selection";
 import { summarizeInvoiceAmounts } from "./invoice-amount-summary";
 import { buildInvoiceNames } from "./invoice-naming";
 import {
+  completedInvoiceFilterCategory,
   invoiceNamePrefix,
   isDownloadableInvoice,
 } from "./invoice-readiness";
@@ -807,14 +808,14 @@ export default function Home() {
 
   const previewCategories = previewDialog?.mode === "single" &&
     previewDialog.showGeneratedNames
-    ? [...new Set(previewDialog.items.map((item) => item.category))].sort(
+    ? [...new Set(previewDialog.items.map(completedInvoiceFilterCategory))].sort(
         (left, right) => left.localeCompare(right, "zh-CN"),
       )
     : [];
   const filteredPreviewItems = previewDialog?.mode === "single" &&
     previewDialog.categoryFilter
     ? previewDialog.items.filter(
-        (item) => item.category === previewDialog.categoryFilter,
+        (item) => completedInvoiceFilterCategory(item) === previewDialog.categoryFilter,
       )
     : previewDialog?.items ?? [];
   const activePreviewItem = filteredPreviewItems.find(
@@ -1505,7 +1506,7 @@ export default function Home() {
                       const categoryFilter = event.target.value;
                       const firstItem = categoryFilter
                         ? previewDialog.items.find(
-                            (item) => item.category === categoryFilter,
+                            (item) => completedInvoiceFilterCategory(item) === categoryFilter,
                           )
                         : previewDialog.items[0];
                       setPreviewDialog((current) => current ? {
@@ -1519,7 +1520,7 @@ export default function Home() {
                     {previewCategories.map((category) => (
                       <option value={category} key={category}>
                         {category}（{previewDialog.items.filter(
-                          (item) => item.category === category,
+                          (item) => completedInvoiceFilterCategory(item) === category,
                         ).length}）
                       </option>
                     ))}
@@ -1562,7 +1563,7 @@ export default function Home() {
                       <div className="invoice-preview-meta">
                         <strong title={item.file.name}>{item.file.name}</strong>
                         <span>来源：{item.source || "直接添加"}</span>
-                        {(!item.number || !item.amount) && (
+                        {!isDownloadableInvoice(item) && (
                           <span className="incomplete-reason">原因：{incompleteReason(item)}</span>
                         )}
                       </div>
@@ -1642,7 +1643,7 @@ export default function Home() {
                       </strong>
                       <span>分类：{item.category}</span>
                       <span>来源：{item.source || "直接添加"}</span>
-                      {(!item.number || !item.amount) && (
+                      {!isDownloadableInvoice(item) && (
                         <span className="incomplete-reason">原因：{incompleteReason(item)}</span>
                       )}
                     </button>

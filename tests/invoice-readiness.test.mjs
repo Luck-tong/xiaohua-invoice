@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  completedInvoiceFilterCategory,
   invoiceNamePrefix,
   isDownloadableInvoice,
 } from "../app/invoice-readiness.ts";
@@ -32,4 +33,12 @@ test("accepts an Alipay screenshot with an amount and no invoice number", () => 
 
   assert.equal(isDownloadableInvoice(item), true);
   assert.equal(invoiceNamePrefix(item), "支付宝图片");
+});
+
+test("groups completed payment screenshots without invoice numbers as other sources", () => {
+  const payment = { number: "", amount: "70613.50", category: "微信截图发票" };
+  const invoice = { number: "26312000004897976641", amount: "218", category: "微信截图发票" };
+
+  assert.equal(completedInvoiceFilterCategory(payment), "其他来源发票");
+  assert.equal(completedInvoiceFilterCategory(invoice), "微信截图发票");
 });
