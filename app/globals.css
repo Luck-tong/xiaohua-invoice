@@ -394,8 +394,15 @@ button {
   display: flex;
   align-items: center;
   gap: 6px;
+  max-width: 220px;
   color: #7d8799;
   font-size: 10px;
+}
+
+.queue-status.error {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .queue-status i {

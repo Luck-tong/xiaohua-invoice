@@ -349,14 +349,16 @@ export async function unpackInvoiceZip(file: File) {
       !entry.dir && /\.(pdf|png|jpe?g|webp)$/i.test(entry.name),
   );
 
-  return Promise.all(
-    entries.map(async (entry) => {
-      const blob = await entry.async("blob");
-      const name = entry.name.split("/").pop() || entry.name;
-      return new File([blob], name, {
+  const files: File[] = [];
+  for (const entry of entries) {
+    const blob = await entry.async("blob");
+    const name = entry.name.split("/").pop() || entry.name;
+    files.push(
+      new File([blob], name, {
         type: mimeForName(name),
         lastModified: file.lastModified,
-      });
-    }),
-  );
+      }),
+    );
+  }
+  return files;
 }

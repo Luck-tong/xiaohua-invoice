@@ -16,6 +16,7 @@ import {
 } from "./invoice-recognition";
 import type { InvoiceCategory } from "./invoice-recognition";
 import { filterFilesByCategories } from "./category-selection";
+import { createTaskQueue } from "./task-queue";
 
 type FileStatus =
   | "queued"
@@ -36,6 +37,7 @@ type InvoiceFile = {
   progress: number;
   method?: "pdf-text" | "ocr";
   source?: string;
+  errorMessage?: string;
 };
 
 type HistoryEntry = {
@@ -129,8 +131,16 @@ function statusText(item: InvoiceFile) {
   if (item.status === "ocr") return `OCR识别 ${item.progress}%`;
   if (item.status === "ready") return "识别完成";
   if (item.status === "review") return "需要核对";
-  if (item.status === "error") return "处理失败";
-  return "等待识别";
+  if (item.status === "error") return `失败：${item.errorMessage || "未知错误"}`;
+  return "排队中";
+}
+
+function recognitionErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  if (/password|encrypted/i.test(message)) return "PDF已加密，请先解除密码";
+  if (/invalid pdf|bad xref|format/i.test(message)) return "PDF文件损坏或格式异常";
+  if (/memory|allocation|out of memory/i.test(message)) return "浏览器内存不足";
+  return message.trim().slice(0, 80) || "无法读取该文件";
 }
 
 function formatHistoryTime(value: string) {
@@ -177,6 +187,7 @@ export default function Home() {
     () => new Set(),
   );
   const inputRef = useRef<HTMLInputElement>(null);
+  const processingQueueRef = useRef(createTaskQueue(3));
 
   const invoiceFiles = useMemo(
     () => files.filter((item) => !isZipFile(item.file)),
@@ -292,31 +303,42 @@ export default function Home() {
   }
 
   function processItem(item: InvoiceFile) {
-    updateItem(item.id, { status: "reading", progress: 1 });
-    recognizeInvoice(item.file, (progress, stage) => {
-      updateItem(item.id, {
-        status: stage,
-        progress: Math.max(1, Math.min(100, progress)),
-      });
-    })
-      .then((result) => {
-        const number = result.number || item.number;
-        const amount = result.amount || item.amount;
+    processingQueueRef.current.add(async () => {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
         updateItem(item.id, {
-          number,
-          amount,
-          category: result.category,
-          method: result.method,
-          progress: 100,
-          status: number && amount ? "ready" : "review",
+          status: "reading",
+          progress: 1,
+          errorMessage: undefined,
         });
-      })
-      .catch(() => {
-        updateItem(item.id, {
-          status: "error",
-          progress: 0,
-        });
-      });
+        try {
+          const result = await recognizeInvoice(item.file, (progress, stage) => {
+            updateItem(item.id, {
+              status: stage,
+              progress: Math.max(1, Math.min(100, progress)),
+            });
+          });
+          const number = result.number || item.number;
+          const amount = result.amount || item.amount;
+          updateItem(item.id, {
+            number,
+            amount,
+            category: result.category,
+            method: result.method,
+            progress: 100,
+            status: number && amount ? "ready" : "review",
+          });
+          return;
+        } catch (error) {
+          if (attempt === 1) {
+            updateItem(item.id, {
+              status: "error",
+              progress: 0,
+              errorMessage: recognitionErrorMessage(error),
+            });
+          }
+        }
+      }
+    });
   }
 
   function processZip(item: InvoiceFile) {
@@ -781,6 +803,7 @@ export default function Home() {
                       </div>
                       <span
                         className={`queue-status ${item.status}`}
+                        title={item.errorMessage}
                       >
                         <i />
                         {statusText(item)}
