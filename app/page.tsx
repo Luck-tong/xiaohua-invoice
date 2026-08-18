@@ -15,7 +15,10 @@ import {
   unpackInvoiceZip,
 } from "./invoice-recognition";
 import type { InvoiceCategory } from "./invoice-recognition";
-import { filterFilesByCategories } from "./category-selection";
+import {
+  DUPLICATE_DOWNLOAD_GROUP,
+  filterFilesByDownloadGroups,
+} from "./category-selection";
 import { summarizeInvoiceAmounts } from "./invoice-amount-summary";
 import { buildInvoiceNames } from "./invoice-naming";
 import {
@@ -313,6 +316,19 @@ export default function Home() {
     () => duplicateGroups.reduce((total, group) => total + group.items.length, 0),
     [duplicateGroups],
   );
+  const duplicateFileIds = useMemo(
+    () => new Set(duplicateGroups.flatMap((group) => group.items.map((item) => item.id))),
+    [duplicateGroups],
+  );
+  const folderGroupKeys = useMemo(
+    () => [
+      ...new Set(downloadableFiles
+        .filter((item) => !duplicateFileIds.has(item.id))
+        .map((item) => item.category)),
+      ...(duplicateFileCount > 0 ? [DUPLICATE_DOWNLOAD_GROUP] : []),
+    ],
+    [downloadableFiles, duplicateFileCount, duplicateFileIds],
+  );
 
   const generatedNames = useMemo(() => {
     return buildInvoiceNames(
@@ -565,9 +581,7 @@ export default function Home() {
   }
 
   function openFolderDialog() {
-    setFolderCategories(
-      new Set(downloadableFiles.map((item) => item.category)),
-    );
+    setFolderCategories(new Set(folderGroupKeys));
     setFolderDialogOpen(true);
   }
 
@@ -649,7 +663,11 @@ export default function Home() {
   }
 
   function confirmFolderCategories() {
-    const ready = filterFilesByCategories(downloadableFiles, folderCategories);
+    const ready = filterFilesByDownloadGroups(
+      downloadableFiles,
+      folderCategories,
+      duplicateFileIds,
+    );
     if (ready.length === 0) return;
     setFolderDialogOpen(false);
     void saveFilesToFolder(ready);
@@ -1417,15 +1435,13 @@ export default function Home() {
               <input
                 type="checkbox"
                 checked={
-                  groupedInvoiceFiles.length > 0 &&
-                  groupedInvoiceFiles.every((group) =>
-                    folderCategories.has(group.category),
-                  )
+                  folderGroupKeys.length > 0 &&
+                  folderGroupKeys.every((key) => folderCategories.has(key))
                 }
                 onChange={(event) =>
                   setFolderCategories(
                     event.target.checked
-                      ? new Set(groupedInvoiceFiles.map((group) => group.category))
+                      ? new Set(folderGroupKeys)
                       : new Set(),
                   )
                 }
@@ -1435,9 +1451,21 @@ export default function Home() {
             </label>
 
             <div className="category-dialog-list">
+              {duplicateFileCount > 0 && (
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={folderCategories.has(DUPLICATE_DOWNLOAD_GROUP)}
+                    onChange={() => toggleFolderCategory(DUPLICATE_DOWNLOAD_GROUP)}
+                  />
+                  <span>重复发票</span>
+                  <strong>{duplicateFileCount} 份</strong>
+                </label>
+              )}
               {groupedInvoiceFiles.map((group) => {
                 const readyCount = group.files.filter(
-                  (item) => item.number && item.amount,
+                  (item) =>
+                    isDownloadableInvoice(item) && !duplicateFileIds.has(item.id),
                 ).length;
                 if (readyCount === 0) return null;
                 return (
@@ -1456,7 +1484,11 @@ export default function Home() {
 
             <div className="category-dialog-footer">
               <span>
-                已选择 {filterFilesByCategories(downloadableFiles, folderCategories).length} 份
+                已选择 {filterFilesByDownloadGroups(
+                  downloadableFiles,
+                  folderCategories,
+                  duplicateFileIds,
+                ).length} 份
               </span>
               <div>
                 <button type="button" onClick={() => setFolderDialogOpen(false)}>
