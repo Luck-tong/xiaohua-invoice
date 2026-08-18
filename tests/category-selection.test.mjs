@@ -54,4 +54,13 @@ test("keeps duplicate invoices in an independent download group", () => {
     ).map((item) => item.id),
     ["1", "2", "3"],
   );
+  assert.deepEqual(
+    filterFilesByDownloadGroups(
+      files,
+      new Set([DUPLICATE_DOWNLOAD_GROUP]),
+      duplicateIds,
+      new Set(["2"]),
+    ).map((item) => item.id),
+    ["2"],
+  );
 });

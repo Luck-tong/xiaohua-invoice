@@ -246,6 +246,10 @@ export default function Home() {
   const [folderCategories, setFolderCategories] = useState<Set<string>>(
     () => new Set(),
   );
+  const [folderDuplicateIds, setFolderDuplicateIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [duplicateGroupExpanded, setDuplicateGroupExpanded] = useState(false);
   const [previewDialog, setPreviewDialog] = useState<PreviewDialog | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const processingQueueRef = useRef(createTaskQueue(3));
@@ -582,7 +586,35 @@ export default function Home() {
 
   function openFolderDialog() {
     setFolderCategories(new Set(folderGroupKeys));
+    setFolderDuplicateIds(new Set(duplicateFileIds));
+    setDuplicateGroupExpanded(false);
     setFolderDialogOpen(true);
+  }
+
+  function toggleDuplicateDownloadGroup() {
+    const allSelected = folderDuplicateIds.size === duplicateFileIds.size;
+    setFolderDuplicateIds(allSelected ? new Set() : new Set(duplicateFileIds));
+    setFolderCategories((current) => {
+      const next = new Set(current);
+      if (allSelected) next.delete(DUPLICATE_DOWNLOAD_GROUP);
+      else next.add(DUPLICATE_DOWNLOAD_GROUP);
+      return next;
+    });
+  }
+
+  function toggleDuplicateDownloadFile(id: string) {
+    setFolderDuplicateIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      setFolderCategories((categories) => {
+        const nextCategories = new Set(categories);
+        if (next.size > 0) nextCategories.add(DUPLICATE_DOWNLOAD_GROUP);
+        else nextCategories.delete(DUPLICATE_DOWNLOAD_GROUP);
+        return nextCategories;
+      });
+      return next;
+    });
   }
 
   function toggleFolderCategory(category: string) {
@@ -667,6 +699,7 @@ export default function Home() {
       downloadableFiles,
       folderCategories,
       duplicateFileIds,
+      folderDuplicateIds,
     );
     if (ready.length === 0) return;
     setFolderDialogOpen(false);
@@ -1438,13 +1471,16 @@ export default function Home() {
                   folderGroupKeys.length > 0 &&
                   folderGroupKeys.every((key) => folderCategories.has(key))
                 }
-                onChange={(event) =>
+                onChange={(event) => {
                   setFolderCategories(
                     event.target.checked
                       ? new Set(folderGroupKeys)
                       : new Set(),
-                  )
-                }
+                  );
+                  setFolderDuplicateIds(
+                    event.target.checked ? new Set(duplicateFileIds) : new Set(),
+                  );
+                }}
               />
               <span>全选所有分类</span>
               <strong>{downloadableFiles.length} 份</strong>
@@ -1452,15 +1488,44 @@ export default function Home() {
 
             <div className="category-dialog-list">
               {duplicateFileCount > 0 && (
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={folderCategories.has(DUPLICATE_DOWNLOAD_GROUP)}
-                    onChange={() => toggleFolderCategory(DUPLICATE_DOWNLOAD_GROUP)}
-                  />
-                  <span>重复发票</span>
-                  <strong>{duplicateFileCount} 份</strong>
-                </label>
+                <div className="duplicate-download-group">
+                  <div className="duplicate-download-heading">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={
+                          folderDuplicateIds.size > 0 &&
+                          folderDuplicateIds.size === duplicateFileIds.size
+                        }
+                        onChange={toggleDuplicateDownloadGroup}
+                      />
+                      <span>重复发票</span>
+                      <strong>已选 {folderDuplicateIds.size}/{duplicateFileCount} 份</strong>
+                    </label>
+                    <button
+                      type="button"
+                      aria-expanded={duplicateGroupExpanded}
+                      onClick={() => setDuplicateGroupExpanded((current) => !current)}
+                    >
+                      {duplicateGroupExpanded ? "收起" : "展开"}
+                    </button>
+                  </div>
+                  {duplicateGroupExpanded && (
+                    <div className="duplicate-download-files">
+                      {duplicateGroups.flatMap((group) => group.items).map((item) => (
+                        <label key={item.id}>
+                          <input
+                            type="checkbox"
+                            checked={folderDuplicateIds.has(item.id)}
+                            onChange={() => toggleDuplicateDownloadFile(item.id)}
+                          />
+                          <span>{invoiceNamePrefix(item)}（{item.amount}）</span>
+                          <small title={item.file.name}>{item.file.name}</small>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
               {groupedInvoiceFiles.map((group) => {
                 const readyCount = group.files.filter(
@@ -1488,6 +1553,7 @@ export default function Home() {
                   downloadableFiles,
                   folderCategories,
                   duplicateFileIds,
+                  folderDuplicateIds,
                 ).length} 份
               </span>
               <div>

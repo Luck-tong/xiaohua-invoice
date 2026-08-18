@@ -9,10 +9,15 @@ export const DUPLICATE_DOWNLOAD_GROUP = "__duplicate_invoices__";
 
 export function filterFilesByDownloadGroups<
   T extends { id: string; category: string },
->(files: T[], groups: Set<string>, duplicateIds: Set<string>) {
+>(
+  files: T[],
+  groups: Set<string>,
+  duplicateIds: Set<string>,
+  selectedDuplicateIds = duplicateIds,
+) {
   return files.filter((item) =>
     duplicateIds.has(item.id)
-      ? groups.has(DUPLICATE_DOWNLOAD_GROUP)
+      ? groups.has(DUPLICATE_DOWNLOAD_GROUP) && selectedDuplicateIds.has(item.id)
       : groups.has(item.category)
   );
 }
