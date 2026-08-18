@@ -144,6 +144,29 @@ test("reads an OCR total even when 合计 is recognized as 含计", () => {
   assert.equal(result.amount, "1049");
 });
 
+test("recognizes a formal invoice despite a WeChat filename and OCR-spaced labels", () => {
+  const text = `发 票 号 到: 26312000004897976641
+    项 目 名 称 规格 型 号 单位 数量 单价 金额 税率 征收率 税额
+    生 产 生 活 服务 * 餐 饮 服 务 1 205. 66 205. 66 6% 12.34
+    合计 205. 66 12.34 价 税 合计（小 写）218. 00`;
+  const filename = "微信图片_20260817181914_2809_103.pdf";
+
+  assert.equal(parseInvoiceText(text, filename).amount, "218");
+  assert.equal(classifyInvoice(text, filename), "餐饮费");
+});
+
+test("recovers an OCR invoice total by amount plus tax when the total label is unreadable", () => {
+  const text = `发 票 号 到: 26312000004897976641
+    项 目 名 称 单价 金额 税率 税额
+    生 产 生 活 服务 * 餐 饮 服 务 205. 66 205. 66 6% 12.34
+    合计 205. 66 12.34 价 税 台 计（小 写）218. 00`;
+
+  assert.equal(
+    parseInvoiceText(text, "微信图片_20260817181914_2809_103.pdf").amount,
+    "218",
+  );
+});
+
 test("classifies WeChat screenshots separately", () => {
   assert.equal(
     classifyInvoice("东方航空 账单详情 交易成功", "微信图片_20260604110930_1619_103.pdf"),

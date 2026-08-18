@@ -162,13 +162,16 @@ function isWeChatScreenshot(text: string, filename = "") {
 }
 
 export function classifyInvoice(text: string, filename = ""): InvoiceCategory {
+  const compactText = text.replace(/\s+/g, "");
   const fullItemName = extractInvoiceItemName(text);
   if (fullItemName) return fullItemName;
 
   if (isAlipayScreenshot(text, filename)) {
     return "支付宝图片";
   }
-  const isOfficialInvoice = /电子发票|发票号码|价税合计/.test(text);
+  const isOfficialInvoice = /电子发票|发票号码|价税合计/.test(compactText) ||
+    (/(?<!\d)\d{20}(?!\d)/.test(compactText) &&
+      /项目名称|税率|征收率|开票日期/.test(compactText));
   if (!isOfficialInvoice && isWeChatScreenshot(text, filename)) {
     return "微信截图发票";
   }
@@ -176,6 +179,7 @@ export function classifyInvoice(text: string, filename = ""): InvoiceCategory {
   return (
     matchCategory(extractInvoiceItemText(text)) ??
     matchCategory(text) ??
+    matchCategory(compactText) ??
     matchCategory(filename) ??
     "其他"
   );
@@ -219,6 +223,24 @@ function closeAmount(left: number, right: number) {
   return Math.abs(left - right) <= 0.011;
 }
 
+function verifiedSumAmount(text: string) {
+  const values = [...text.matchAll(
+    /(?<![\d.])-?[0-9][\d,]*\.\d{1,2}(?!\d)/g,
+  )].map((match) => Math.abs(Number(match[0].replace(/,/g, ""))))
+    .filter((value) => Number.isFinite(value) && value <= 999_999_999_999);
+
+  const verifiedTotals = values.filter((target, targetIndex) =>
+    values.some((left, leftIndex) =>
+      leftIndex !== targetIndex && values.some((right, rightIndex) =>
+        rightIndex !== targetIndex &&
+        rightIndex !== leftIndex &&
+        closeAmount(left + right, target)
+      )
+    )
+  );
+  return verifiedTotals.length > 0 ? String(Math.max(...verifiedTotals)) : "";
+}
+
 function invoiceTotalAmount(text: string) {
   const compact = text
     .replace(/(?<=\d)\s+(?=\d)/g, "|")
@@ -244,27 +266,8 @@ function invoiceTotalAmount(text: string) {
   )?.[1];
   if (directAfterSmall) return cleanPositiveAmount(directAfterSmall);
 
-  const values = [...totalArea.matchAll(
-    /(?<![\d.])-?[0-9][\d,]*\.\d{1,2}(?!\d)/g,
-  )].map((match) => ({
-    raw: match[0],
-    value: Math.abs(Number(match[0].replace(/,/g, ""))),
-  })).filter((candidate) =>
-    Number.isFinite(candidate.value) && candidate.value <= 999_999_999_999
-  );
-
-  const verifiedTotals = values.filter((target, targetIndex) =>
-    values.some((left, leftIndex) =>
-      leftIndex !== targetIndex && values.some((right, rightIndex) =>
-        rightIndex !== targetIndex &&
-        rightIndex !== leftIndex &&
-        closeAmount(left.value + right.value, target.value)
-      )
-    )
-  );
-  if (verifiedTotals.length > 0) {
-    return String(Math.max(...verifiedTotals.map((candidate) => candidate.value)));
-  }
+  const verifiedTotal = verifiedSumAmount(totalArea);
+  if (verifiedTotal) return verifiedTotal;
 
   const labelledAfterSmall = totalArea.match(
     /小写[）)》]?[^0-9]{0,140}[¥￥]?(-?[0-9][\d,]*(?:\.\d{1,2})?)/,
@@ -324,6 +327,12 @@ export function parseInvoiceText(text: string, filename = "") {
   }
 
   if (!amount) amount = invoiceTotalAmount(normalized);
+  if (!amount && number) {
+    const amountText = normalized
+      .replace(/(?<=\d)\s+(?=\d)/g, "|")
+      .replace(/\s+/g, "");
+    amount = verifiedSumAmount(amountText);
+  }
 
   const amountPatterns = [
     /(?:票价|退票费)\s*:?\s*[¥￥]?\s*([\d,]+(?:\.\d{1,2})?)/,
