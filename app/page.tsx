@@ -27,6 +27,7 @@ import {
   isDownloadableInvoice,
 } from "./invoice-readiness";
 import { createTaskQueue } from "./task-queue";
+import { adjacentPreviewId } from "./preview-keyboard";
 
 type FileStatus =
   | "queued"
@@ -944,6 +945,52 @@ export default function Home() {
   const amountPreviewSummary = summarizeInvoiceAmounts(
     previewDialog?.mode === "amounts" ? filteredPreviewItems : [],
   );
+  const keyboardPreviewItems = previewDialog?.mode === "amounts"
+    ? [
+        ...amountPreviewSummary.highest,
+        ...amountPreviewSummary.lowest.filter(
+          (item) => !amountPreviewSummary.highest.some((candidate) => candidate.id === item.id),
+        ),
+      ]
+    : filteredPreviewItems;
+
+  useEffect(() => {
+    if (!previewDialog) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      const target = event.target as HTMLElement | null;
+      if (target?.matches("input, select, textarea, [contenteditable='true']")) return;
+
+      event.preventDefault();
+      if (previewDialog.mode === "duplicates") {
+        const nextKey = adjacentPreviewId(
+          previewDuplicateKeys,
+          previewDialog.duplicateKey,
+          event.key === "ArrowDown" ? 1 : -1,
+        );
+        if (!nextKey) return;
+        setDuplicateDeleteIds(new Set());
+        setPreviewDialog((current) => current ? { ...current, duplicateKey: nextKey } : current);
+        return;
+      }
+
+      const nextId = adjacentPreviewId(
+        keyboardPreviewItems.map((item) => item.id),
+        activePreviewItem?.id,
+        event.key === "ArrowDown" ? 1 : -1,
+      );
+      if (!nextId) return;
+      setPreviewDialog((current) => current ? { ...current, activeId: nextId } : current);
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>(`[data-preview-item-id="${nextId}"]`)
+          ?.scrollIntoView({ block: "nearest" });
+      });
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activePreviewItem?.id, keyboardPreviewItems, previewDialog, previewDuplicateKeys]);
 
   return (
     <main>
@@ -1771,6 +1818,7 @@ export default function Home() {
                   {amountPreviewSummary.highest.map((item, index) => (
                     <button
                       type="button"
+                      data-preview-item-id={item.id}
                       className={item.id === activePreviewItem?.id ? "active" : ""}
                       key={`highest-${item.id}`}
                       onClick={() =>
@@ -1785,6 +1833,7 @@ export default function Home() {
                   {amountPreviewSummary.lowest.map((item, index) => (
                     <button
                       type="button"
+                      data-preview-item-id={item.id}
                       className={item.id === activePreviewItem?.id ? "active" : ""}
                       key={`lowest-${item.id}`}
                       onClick={() =>
@@ -1806,6 +1855,7 @@ export default function Home() {
                   {filteredPreviewItems.map((item) => (
                     <button
                       type="button"
+                      data-preview-item-id={item.id}
                       className={item.id === activePreviewItem?.id ? "active" : ""}
                       key={item.id}
                       onClick={() =>
