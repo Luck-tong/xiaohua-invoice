@@ -115,6 +115,18 @@ test("classifies WeChat screenshots separately", () => {
   );
 });
 
+test("uses invoice content before a WeChat image filename", () => {
+  const text = `电子发票（普通发票） 发票号码：26312000004909676536
+    项目名称 规格型号 单位 数量 单价 金额
+    *生产生活服务*餐饮服务 1 989.62 989.62
+    价税合计（小写）¥1049.00`;
+
+  assert.equal(
+    classifyInvoice(text, "微信图片_20260807125237_790_15.pdf"),
+    "生产生活服务-餐饮服务",
+  );
+});
+
 test("uses the paid amount rather than the original order amount in a WeChat screenshot", () => {
   const result = parseInvoiceText(
     "东方航空 -70,613.50 交易成功 订单金额 70614.00 机票支付立减 -0.50",

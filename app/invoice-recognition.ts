@@ -162,15 +162,16 @@ function isWeChatScreenshot(text: string, filename = "") {
 }
 
 export function classifyInvoice(text: string, filename = ""): InvoiceCategory {
+  const fullItemName = extractInvoiceItemName(text);
+  if (fullItemName) return fullItemName;
+
   if (isAlipayScreenshot(text, filename)) {
     return "支付宝图片";
   }
-  if (isWeChatScreenshot(text, filename)) {
+  const isOfficialInvoice = /电子发票|发票号码|价税合计/.test(text);
+  if (!isOfficialInvoice && isWeChatScreenshot(text, filename)) {
     return "微信截图发票";
   }
-
-  const fullItemName = extractInvoiceItemName(text);
-  if (fullItemName) return fullItemName;
 
   return (
     matchCategory(extractInvoiceItemText(text)) ??
