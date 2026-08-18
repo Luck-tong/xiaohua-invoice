@@ -864,7 +864,7 @@ export default function Home() {
         <div className="workspace-main">
 
       <section className="hero" id="tool">
-        <h1>批量识别发票，自动生成规范文件名</h1>
+        <h1 className="hero-wordmark">Flower</h1>
         <p>
           读取发票号码与价税合计，一次完成多份文件整理。
           <br />
