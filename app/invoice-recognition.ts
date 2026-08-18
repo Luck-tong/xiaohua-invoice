@@ -296,7 +296,7 @@ function cleanPartyName(value: string) {
 
 function invoiceParties(text: string) {
   const partyArea = text.split(/项目\s*名\s*称|货物或应税劳务/)[0] ?? text;
-  const taxIds = [...partyArea.matchAll(/(?<![0-9A-Z])[0-9A-Z]{15,20}(?![0-9A-Z])/gi)]
+  const taxIds = [...text.matchAll(/(?<![0-9A-Z])[0-9A-Z]{15,20}(?![0-9A-Z])/gi)]
     .map((match) => match[0].toUpperCase())
     .filter((value) => value.length === 15 || value.length === 18);
   const names = [...partyArea.matchAll(
@@ -312,10 +312,29 @@ function invoiceParties(text: string) {
     /销售方信息[\s\S]{0,40}?(?:名称|名\s*称)\s*[:：]\s*([\s\S]{2,100}?)(?=\s*(?:购买方信息|统一社会信用代码|纳税人识别号|项目\s*名\s*称|$))/i,
   )?.[1];
 
+  const invoiceNumberMatch = text.match(/(?<!\d)\d{20}(?!\d)/);
+  let flattenedBuyerName = "";
+  let flattenedSellerName = "";
+  if (invoiceNumberMatch?.index !== undefined && taxIds.length >= 2) {
+    const valuesArea = text.slice(invoiceNumberMatch.index + invoiceNumberMatch[0].length);
+    const withoutDate = valuesArea.replace(
+      /^\s*\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日\s*/,
+      "",
+    );
+    const buyerTaxIndex = withoutDate.indexOf(taxIds[0]);
+    const sellerTaxIndex = withoutDate.indexOf(taxIds[1], buyerTaxIndex + taxIds[0].length);
+    if (buyerTaxIndex > 0 && sellerTaxIndex > buyerTaxIndex) {
+      flattenedBuyerName = cleanPartyName(withoutDate.slice(0, buyerTaxIndex));
+      flattenedSellerName = cleanPartyName(
+        withoutDate.slice(buyerTaxIndex + taxIds[0].length, sellerTaxIndex),
+      );
+    }
+  }
+
   return {
-    buyerName: cleanPartyName(buyerName ?? names[0] ?? ""),
+    buyerName: cleanPartyName(buyerName ?? names[0] ?? flattenedBuyerName),
     buyerTaxId: taxIds[0] ?? "",
-    sellerName: cleanPartyName(sellerName ?? names[1] ?? ""),
+    sellerName: cleanPartyName(sellerName ?? names[1] ?? flattenedSellerName),
     sellerTaxId: taxIds[1] ?? "",
   };
 }
@@ -337,6 +356,20 @@ function invoiceSubtotalAndTax(text: string, totalAmount: string) {
     : [...beforeTotal.matchAll(/(?<![\d.])-?[0-9][\d,]*\.\d{1,2}(?!\d)/g)]
       .map((match) => Number(match[0].replace(/,/g, "")))
       .slice(-12);
+
+  const currencyCandidates = [...text.matchAll(
+    /[¥￥]\s*(-?[0-9][\d,]*\.\d{1,2})/g,
+  )].map((match) => Number(match[1].replace(/,/g, "")));
+
+  for (let right = 1; right < currencyCandidates.length; right += 1) {
+    for (let left = 0; left < right; left += 1) {
+      const subtotal = currencyCandidates[left];
+      const taxAmount = currencyCandidates[right];
+      if (subtotal >= 0 && taxAmount >= 0 && closeAmount(subtotal + taxAmount, total)) {
+        return { subtotal: String(subtotal), taxAmount: String(taxAmount) };
+      }
+    }
+  }
 
   for (let right = candidates.length - 1; right >= 1; right -= 1) {
     for (let left = right - 1; left >= 0; left -= 1) {

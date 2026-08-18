@@ -106,6 +106,27 @@ test("separates buyer and seller names in row-ordered PDF text", () => {
   assert.equal(result.sellerName, "大连祖君宏正黄旗餐饮有限公司");
 });
 
+test("extracts parties and totals from flattened PDF token order", () => {
+  const result = parseInvoiceText(
+    `电子发票（普通发票） 发票号码： 开票日期： 购 买 方 信 息
+    统一社会信用代码/纳税人识别号： 销 售 方 信 息
+    统一社会信用代码/纳税人识别号： 名称： 名称： 项目名称 规格型号 单位 数量 单价 金额 税率/征收率 税额
+    合计 价税合计（大写）（小写）备注 开票人：
+    26312000004572590611 2026年07月18日 上海市建纬律师事务所 31310000425013819A
+    上海瑞红餐饮有限公司 91310101588687404D ¥275.32 ¥16.52 贰佰玖拾壹圆捌角肆分 ¥291.84
+    孙平 *生产生活服务*餐饮服务 6% 275.32 16.52 275.32 1`,
+    "26312000004572590611_上海市建纬律师事务所.pdf",
+  );
+
+  assert.equal(result.buyerName, "上海市建纬律师事务所");
+  assert.equal(result.buyerTaxId, "31310000425013819A");
+  assert.equal(result.sellerName, "上海瑞红餐饮有限公司");
+  assert.equal(result.sellerTaxId, "91310101588687404D");
+  assert.equal(result.amount, "291.84");
+  assert.equal(result.subtotal, "275.32");
+  assert.equal(result.taxAmount, "16.52");
+});
+
 test("reads a spaced railway ticket price from OCR text", () => {
   const result = parseInvoiceText(
     "发票号码：26469151444000199953 票 价： ￥ 68.00",
