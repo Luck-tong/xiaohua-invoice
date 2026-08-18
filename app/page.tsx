@@ -817,7 +817,7 @@ export default function Home() {
             开始处理
             <span>→</span>
           </a>
-          <a className="header-action save-action" href="#batch-actions">
+          <a className="header-action save-action" href="#save-actions">
             保存下载
             <span>↓</span>
           </a>
@@ -1219,13 +1219,40 @@ export default function Home() {
                 </div>
               </div>
             )}
+            {duplicateGroups.length > 0 && (
+              <div className="duplicate-summary" aria-label="重复发票">
+                <span>重复发票</span>
+                <div>
+                  {duplicateGroups.map((group) => {
+                    const item = group.items[0];
+                    return (
+                      <button
+                        type="button"
+                        key={group.key}
+                        onClick={() =>
+                          setPreviewDialog({
+                            title: "重复发票对比",
+                            items: duplicateGroups.flatMap((entry) => entry.items),
+                            mode: "duplicates",
+                            duplicateKey: group.key,
+                          })
+                        }
+                      >
+                        <span>{item.number}（{item.amount}）</span>
+                        <strong>{group.items.length} 份 · 对比</strong>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className="batch-notice">
               {saveNotice ||
                 (duplicateKeys.size
                   ? "发现重复号码，请先在中间结果区核对。"
                   : "勾选发票后，可在这里统一导出或保存。")}
             </div>
-            <div className="batch-actions">
+            <div className="batch-actions" id="save-actions">
               <button
                 className="download-button"
                 disabled={downloadableFiles.length === 0 || busyAction !== null}

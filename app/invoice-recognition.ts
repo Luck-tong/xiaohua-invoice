@@ -10,6 +10,7 @@ export type RecognitionResult = {
 };
 
 export const INVOICE_CATEGORIES = [
+  "微信截图发票",
   "交通费",
   "餐饮费",
   "住宿费",
@@ -146,6 +147,10 @@ export function extractInvoiceItemName(text: string) {
 }
 
 export function classifyInvoice(text: string, filename = ""): InvoiceCategory {
+  if (/微信图片|微信截图/i.test(filename) || /账单详情|微信支付/.test(text)) {
+    return "微信截图发票";
+  }
+
   const fullItemName = extractInvoiceItemName(text);
   if (fullItemName) return fullItemName;
 
@@ -167,6 +172,11 @@ function cleanAmount(value: string) {
   const parsed = Number.parseFloat(value.replace(/,/g, "").replace("，", "."));
   if (!Number.isFinite(parsed)) return "";
   return String(parsed);
+}
+
+function cleanPositiveAmount(value: string) {
+  const amount = cleanAmount(value);
+  return amount ? String(Math.abs(Number(amount))) : "";
 }
 
 function compactDigits(value: string) {
@@ -212,9 +222,19 @@ export function parseInvoiceText(text: string, filename = "") {
 
   let amount = "";
 
-  const ticketAmount = compact.match(
+  if (/微信图片|微信截图/i.test(filename) || /账单详情|微信支付/.test(compact)) {
+    const paidAmount = compact.match(
+      /(-?[\d,]+(?:\.\d{1,2})?)交易成功/,
+    )?.[1];
+    const orderAmount = compact.match(
+      /订单金额[:：]?(-?[\d,]+(?:\.\d{1,2})?)/,
+    )?.[1];
+    amount = cleanPositiveAmount(paidAmount || orderAmount || "");
+  }
+
+  const ticketAmount = !amount ? compact.match(
     /(?:票价|退票费):?[¥￥]?([\d,]+(?:\.\d{1,2})?)/,
-  )?.[1];
+  )?.[1] : "";
   if (ticketAmount) amount = cleanAmount(ticketAmount);
 
   if (!amount && /(?:铁路电子客票|电子客票)/.test(compact)) {

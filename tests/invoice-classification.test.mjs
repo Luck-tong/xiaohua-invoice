@@ -89,3 +89,18 @@ test("reads an OCR total even when 合计 is recognized as 含计", () => {
   );
   assert.equal(result.amount, "1049");
 });
+
+test("classifies WeChat screenshots separately", () => {
+  assert.equal(
+    classifyInvoice("东方航空 账单详情 交易成功", "微信图片_20260604110930_1619_103.pdf"),
+    "微信截图发票",
+  );
+});
+
+test("uses the paid amount rather than the original order amount in a WeChat screenshot", () => {
+  const result = parseInvoiceText(
+    "东方航空 -70,613.50 交易成功 订单金额 70614.00 机票支付立减 -0.50",
+    "微信图片_20260604110930_1619_103.pdf",
+  );
+  assert.equal(result.amount, "70613.5");
+});

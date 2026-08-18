@@ -2031,6 +2031,59 @@ body {
   font-size: 9px;
 }
 
+.duplicate-summary {
+  margin: 0 0 12px;
+  padding: 11px;
+  border: 1px solid #edd1a5;
+  border-radius: 9px;
+  background: #fffaf1;
+}
+
+.duplicate-summary > span {
+  display: block;
+  margin-bottom: 8px;
+  color: #a86620;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.duplicate-summary > div {
+  display: grid;
+  gap: 6px;
+}
+
+.duplicate-summary button {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid #f0ddbf;
+  border-radius: 7px;
+  color: #5f4930;
+  background: #fff;
+  cursor: pointer;
+  font-size: 8px;
+}
+
+.duplicate-summary button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.duplicate-summary button strong {
+  flex: 0 0 auto;
+  color: #b46b1c;
+  font-size: 8px;
+}
+
+#save-actions {
+  scroll-margin-top: 92px;
+}
+
 .batch-notice {
   min-height: 42px;
   padding: 10px 11px;
