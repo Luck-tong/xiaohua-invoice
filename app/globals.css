@@ -1,17 +1,17 @@
 @import "tailwindcss";
 
 :root {
-  --navy: #16213e;
-  --navy-soft: #253252;
-  --blue: #4263eb;
-  --blue-dark: #3451c7;
-  --blue-pale: #eef2ff;
-  --cyan: #22b8cf;
-  --green: #13a37d;
-  --text: #1d2433;
-  --muted: #667085;
-  --line: #e5e8ef;
-  --surface: #f7f8fb;
+  --navy: #25324a;
+  --navy-soft: #35445f;
+  --blue: #5b6b92;
+  --blue-dark: #485a82;
+  --blue-pale: #f0f3f8;
+  --cyan: #6f93a5;
+  --green: #2f876f;
+  --text: #27324a;
+  --muted: #6d788c;
+  --line: #e1e6ee;
+  --surface: #f5f7fa;
   --white: #ffffff;
 }
 
@@ -147,9 +147,9 @@ button {
   padding: 76px 24px 0;
   text-align: center;
   background:
-    radial-gradient(circle at 24% 12%, rgba(66, 99, 235, 0.18), transparent 29rem),
-    radial-gradient(circle at 78% 24%, rgba(34, 184, 207, 0.15), transparent 26rem),
-    linear-gradient(180deg, #f5f8ff 0%, #ffffff 78%);
+    radial-gradient(circle at 24% 12%, rgba(91, 107, 146, 0.16), transparent 29rem),
+    radial-gradient(circle at 78% 24%, rgba(111, 147, 165, 0.13), transparent 26rem),
+    linear-gradient(180deg, #f4f6fa 0%, #ffffff 78%);
 }
 
 .hero::before {
@@ -173,7 +173,7 @@ button {
 .hero h1 {
   margin: 22px auto 18px;
   color: var(--navy);
-  background: linear-gradient(112deg, #16213e 18%, #315ad4 58%, #119ab2);
+  background: linear-gradient(112deg, #25324a 18%, #52678f 58%, #658d9e);
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -1462,12 +1462,12 @@ button {
   align-items: center;
   justify-content: space-between;
   padding: 20px max(24px, calc((100% - 1120px) / 2));
-  color: #66758f;
-  border: 1px solid #dbe5f3;
+  color: #68758a;
+  border: 1px solid #dce3ec;
   background:
-    linear-gradient(rgba(95, 124, 220, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(95, 124, 220, 0.06) 1px, transparent 1px),
-    linear-gradient(105deg, #eef3fb, #e7f3f8);
+    linear-gradient(rgba(91, 107, 146, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(91, 107, 146, 0.045) 1px, transparent 1px),
+    linear-gradient(105deg, #f0f3f7, #edf3f4);
   background-size: 28px 28px, 28px 28px, auto;
 }
 
@@ -1820,7 +1820,7 @@ button {
 
 /* Workspace layout */
 body {
-  background: #f4f7fc;
+  background: #f3f5f8;
 }
 
 .site-header {
@@ -1859,9 +1859,9 @@ body {
   border-radius: 18px;
   text-align: left;
   background:
-    radial-gradient(circle at 10% 0%, rgba(66, 99, 235, 0.13), transparent 24rem),
-    radial-gradient(circle at 92% 22%, rgba(34, 184, 207, 0.12), transparent 21rem),
-    #fbfcff;
+    radial-gradient(circle at 10% 0%, rgba(91, 107, 146, 0.12), transparent 24rem),
+    radial-gradient(circle at 92% 22%, rgba(111, 147, 165, 0.1), transparent 21rem),
+    #fafbfd;
   box-shadow: 0 18px 50px rgba(37, 56, 106, 0.07);
 }
 
@@ -2036,7 +2036,7 @@ body {
 
 .batch-stats .amount-stat {
   grid-column: 1 / -1;
-  background: linear-gradient(110deg, #edf2ff, #effbfc);
+  background: linear-gradient(110deg, #f0f3f8, #f0f5f6);
 }
 
 .batch-stats .amount-stat strong {
