@@ -16,6 +16,7 @@ import {
 } from "./invoice-recognition";
 import type { InvoiceCategory } from "./invoice-recognition";
 import { filterFilesByCategories } from "./category-selection";
+import { buildInvoiceNames } from "./invoice-naming";
 import { createTaskQueue } from "./task-queue";
 
 type FileStatus =
@@ -53,7 +54,7 @@ type PreviewDialog = {
   items: InvoiceFile[];
   mode: "single" | "duplicates";
   activeId?: string;
-  duplicateNumber?: string;
+  duplicateKey?: string;
 };
 
 const HISTORY_KEY = "piaoli-download-history";
@@ -98,6 +99,25 @@ function readHints(name: string) {
 function renamedFile(item: InvoiceFile) {
   if (!item.number || !item.amount) return "等待识别后生成";
   return `${item.number}（${item.amount}）${extensionOf(item.file.name)}`;
+}
+
+function invoiceDuplicateKey(item: InvoiceFile) {
+  if (!item.number || !item.amount) return "";
+  const amount = Number(item.amount);
+  return `${item.number}::${Number.isFinite(amount) ? amount.toFixed(2) : item.amount}`;
+}
+
+function incompleteReason(item: InvoiceFile) {
+  if (["queued", "unzipping", "reading", "ocr"].includes(item.status)) {
+    return statusText(item);
+  }
+  if (item.status === "error") {
+    return `处理失败：${item.errorMessage || "无法读取该文件"}`;
+  }
+  if (!item.number && !item.amount) return "缺少发票号码和金额";
+  if (!item.number) return "缺少发票号码";
+  if (!item.amount) return "缺少发票金额";
+  return "需要人工核对";
 }
 
 async function availableName(
@@ -253,10 +273,11 @@ export default function Home() {
     [invoiceFiles],
   );
 
-  const duplicateNumbers = useMemo(() => {
+  const duplicateKeys = useMemo(() => {
     const counts = new Map<string, number>();
     invoiceFiles.forEach((item) => {
-      if (item.number) counts.set(item.number, (counts.get(item.number) ?? 0) + 1);
+      const key = invoiceDuplicateKey(item);
+      if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
     });
     return new Set(
       [...counts.entries()]
@@ -267,16 +288,31 @@ export default function Home() {
 
   const duplicateGroups = useMemo(
     () =>
-      [...duplicateNumbers].map((number) => ({
-        number,
-        items: invoiceFiles.filter((item) => item.number === number),
+      [...duplicateKeys].map((key) => ({
+        key,
+        items: invoiceFiles.filter((item) => invoiceDuplicateKey(item) === key),
       })),
-    [duplicateNumbers, invoiceFiles],
+    [duplicateKeys, invoiceFiles],
   );
   const duplicateFileCount = useMemo(
     () => duplicateGroups.reduce((total, group) => total + group.items.length, 0),
     [duplicateGroups],
   );
+
+  const generatedNames = useMemo(() => {
+    return buildInvoiceNames(
+      downloadableFiles.map((item) => ({
+        id: item.id,
+        number: item.number,
+        amount: item.amount,
+        fileName: item.file.name,
+      })),
+    );
+  }, [downloadableFiles]);
+
+  function generatedName(item: InvoiceFile) {
+    return generatedNames.get(item.id) || renamedFile(item);
+  }
 
   const historyNumbers = useMemo(() => {
     const numbers = new Set<string>();
@@ -533,7 +569,7 @@ export default function Home() {
       setSaveNotice("");
       const usedNames = new Map<string, number>();
       const savedNames = ready.map((item) =>
-        uniqueArchiveName(renamedFile(item), usedNames),
+        uniqueArchiveName(generatedName(item), usedNames),
       );
 
       ready.forEach((item, index) => {
@@ -567,7 +603,7 @@ export default function Home() {
       const savedNames: string[] = [];
 
       for (const item of ready) {
-        const name = await availableName(directory, renamedFile(item));
+        const name = await availableName(directory, generatedName(item));
         const handle = await directory.getFileHandle(name, { create: true });
         const writable = await handle.createWritable();
         await writable.write(item.file);
@@ -614,7 +650,7 @@ export default function Home() {
       const zip = new JSZip();
       const usedNames = new Map<string, number>();
       const savedNames = ready.map((item) =>
-        uniqueArchiveName(renamedFile(item), usedNames),
+        uniqueArchiveName(generatedName(item), usedNames),
       );
 
       ready.forEach((item, index) => {
@@ -657,9 +693,9 @@ export default function Home() {
         发票号码: item.number,
         发票金额: Number(item.amount),
         原文件名: item.file.name,
-        新文件名: renamedFile(item),
+        新文件名: generatedName(item),
         识别方式: item.method === "ocr" ? "OCR识别" : "PDF文字读取",
-        重复提醒: duplicateNumbers.has(item.number)
+        重复提醒: duplicateKeys.has(invoiceDuplicateKey(item))
           ? "本批次号码重复"
           : historyNumbers.has(item.number)
             ? "历史记录中已处理"
@@ -754,12 +790,12 @@ export default function Home() {
   const activePreviewItem = previewDialog?.items.find(
     (item) => item.id === previewDialog.activeId,
   ) ?? previewDialog?.items[0];
-  const previewDuplicateNumbers = previewDialog?.mode === "duplicates"
-    ? [...new Set(previewDialog.items.map((item) => item.number))]
+  const previewDuplicateKeys = previewDialog?.mode === "duplicates"
+    ? [...new Set(previewDialog.items.map(invoiceDuplicateKey))]
     : [];
   const comparedPreviewItems = previewDialog?.mode === "duplicates"
     ? previewDialog.items.filter(
-        (item) => item.number === previewDialog.duplicateNumber,
+        (item) => invoiceDuplicateKey(item) === previewDialog.duplicateKey,
       )
     : [];
 
@@ -947,7 +983,9 @@ export default function Home() {
                       const isReady = Boolean(item.number && item.amount);
                       const processing =
                         item.status === "reading" || item.status === "ocr";
-                      const duplicateInBatch = duplicateNumbers.has(item.number);
+                      const duplicateInBatch = duplicateKeys.has(
+                        invoiceDuplicateKey(item),
+                      );
                       const duplicateInHistory =
                         Boolean(item.number) && historyNumbers.has(item.number);
                       return (
@@ -1066,7 +1104,11 @@ export default function Home() {
                                     : "还需补充"}
                               </span>
                               <strong>
-                                {processing ? statusText(item) : renamedFile(item)}
+                                {processing
+                                  ? statusText(item)
+                                  : isReady
+                                    ? generatedName(item)
+                                    : incompleteReason(item)}
                               </strong>
                             </div>
                           </div>
@@ -1138,19 +1180,19 @@ export default function Home() {
               <article className="amount-stat"><span>已选金额</span><strong>¥{selectedAmountTotal}</strong></article>
               <button
                 type="button"
-                className={duplicateNumbers.size ? "warning-stat" : ""}
-                disabled={duplicateNumbers.size === 0}
+                className={duplicateKeys.size ? "warning-stat" : ""}
+                disabled={duplicateKeys.size === 0}
                 onClick={() =>
                   setPreviewDialog({
                     title: "重复发票对比",
                     items: duplicateGroups.flatMap((group) => group.items),
                     mode: "duplicates",
-                    duplicateNumber: duplicateGroups[0]?.number,
+                    duplicateKey: duplicateGroups[0]?.key,
                   })
                 }
               >
                 <span>重复组数 · 已含在识别数中</span>
-                <strong>{duplicateNumbers.size} 组</strong>
+                <strong>{duplicateKeys.size} 组</strong>
                 <small>涉及 {duplicateFileCount} 份 · 点击对比</small>
               </button>
             </div>
@@ -1179,7 +1221,7 @@ export default function Home() {
             )}
             <div className="batch-notice">
               {saveNotice ||
-                (duplicateNumbers.size
+                (duplicateKeys.size
                   ? "发现重复号码，请先在中间结果区核对。"
                   : "勾选发票后，可在这里统一导出或保存。")}
             </div>
@@ -1357,20 +1399,25 @@ export default function Home() {
             {previewDialog.mode === "duplicates" ? (
               <>
                 <div className="duplicate-number-tabs">
-                  {previewDuplicateNumbers.map((number) => (
+                  {previewDuplicateKeys.map((key) => {
+                    const item = previewDialog.items.find(
+                      (candidate) => invoiceDuplicateKey(candidate) === key,
+                    );
+                    return (
                     <button
                       type="button"
-                      className={number === previewDialog.duplicateNumber ? "active" : ""}
-                      key={number}
+                      className={key === previewDialog.duplicateKey ? "active" : ""}
+                      key={key}
                       onClick={() =>
                         setPreviewDialog((current) =>
-                          current ? { ...current, duplicateNumber: number } : current,
+                          current ? { ...current, duplicateKey: key } : current,
                         )
                       }
                     >
-                      {number}
+                      {item?.number}（{item?.amount}）
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
                 <div className="duplicate-preview-grid">
                   {comparedPreviewItems.map((item) => (
@@ -1378,6 +1425,9 @@ export default function Home() {
                       <div className="invoice-preview-meta">
                         <strong title={item.file.name}>{item.file.name}</strong>
                         <span>来源：{item.source || "直接添加"}</span>
+                        {(!item.number || !item.amount) && (
+                          <span className="incomplete-reason">原因：{incompleteReason(item)}</span>
+                        )}
                       </div>
                       <InvoiceDocumentPreview item={item} />
                     </article>
@@ -1400,6 +1450,9 @@ export default function Home() {
                     >
                       <strong title={item.file.name}>{item.file.name}</strong>
                       <span>来源：{item.source || "直接添加"}</span>
+                      {(!item.number || !item.amount) && (
+                        <span className="incomplete-reason">原因：{incompleteReason(item)}</span>
+                      )}
                     </button>
                   ))}
                 </div>
