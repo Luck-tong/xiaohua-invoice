@@ -72,3 +72,20 @@ test("uses the final currency amount in a fragmented invoice total area", () => 
   );
   assert.equal(result.amount, "217.3");
 });
+
+test("reads an OCR total when the currency symbol is mistaken for a Chinese character", () => {
+  const result = parseInvoiceText(
+    "发 票 号 码 : 26312000004897976641 价 税 合计 《大 写 ) 贰佰壹拾捌圆整 (小 写 ) 对 218. 00",
+    "微信图片_20260817181914_2809_103.pdf",
+  );
+  assert.equal(result.number, "26312000004897976641");
+  assert.equal(result.amount, "218");
+});
+
+test("reads an OCR total even when 合计 is recognized as 含计", () => {
+  const result = parseInvoiceText(
+    "发票号码:26312000004909676536 价 税 含 计 (大写) 壹仟零肆拾玖圆整 (小 写 ) 对 1049. 00",
+    "微信图片_20260807125237_790_15.pdf",
+  );
+  assert.equal(result.amount, "1049");
+});

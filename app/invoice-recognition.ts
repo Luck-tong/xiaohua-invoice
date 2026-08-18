@@ -203,7 +203,9 @@ export function parseInvoiceText(text: string, filename = "") {
   )?.[1];
   const fallbackNumber = spacedTwentyDigit
     ? compactDigits(spacedTwentyDigit)
-    : normalized.match(/(?<!\d)\d{20}(?!\d)/)?.[0] ?? "";
+    : normalized.match(/(?<!\d)\d{20}(?!\d)/)?.[0] ??
+      compact.match(/(?<!\d)\d{20}(?!\d)/)?.[0] ??
+      "";
   const number = validInvoiceNumber(labelledDigits)
     ? labelledDigits
     : fallbackNumber || hints.number;
@@ -228,6 +230,13 @@ export function parseInvoiceText(text: string, filename = "") {
       const lastAmount = currencyAmounts.at(-1)?.[1];
       if (lastAmount) amount = cleanAmount(lastAmount);
     }
+  }
+
+  if (!amount) {
+    const smallTotal = compact.match(
+      /小写[）)》]?[^0-9]{0,20}([0-9][\d,]*(?:\.\d{1,2})?)/,
+    )?.[1];
+    if (smallTotal) amount = cleanAmount(smallTotal);
   }
 
   const amountPatterns = [
