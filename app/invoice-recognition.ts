@@ -260,7 +260,7 @@ function recognizeWithOcr(
 }
 
 async function loadPdf(file: File) {
-  const pdfjs = await import("pdfjs-dist/webpack.mjs");
+  const pdfjs = await import("pdfjs-dist/legacy/webpack.mjs");
   return pdfjs.getDocument({
     data: new Uint8Array(await file.arrayBuffer()),
     cMapUrl: `${PUBLIC_BASE_PATH}/pdfjs/cmaps/`,
