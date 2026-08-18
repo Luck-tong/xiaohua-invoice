@@ -79,7 +79,7 @@ test("keeps identifiers as text and unknown amounts blank", () => {
   assert.equal(row[11], "");
 });
 
-test("writes a pale-blue header and a pale-red incomplete row into the xlsx file", async () => {
+test("centers all cells, uses a blue-gray header, and keeps incomplete rows pale red", async () => {
   const sheet = XLSX.utils.aoa_to_sheet([
     ["序号", "发票号码"],
     [1, "11111111111111111111"],
@@ -93,8 +93,11 @@ test("writes a pale-blue header and a pale-red incomplete row into the xlsx file
   const stylesXml = await zip.file("xl/styles.xml").async("string");
   const sheetXml = await zip.file("xl/worksheets/sheet1.xml").async("string");
 
-  assert.match(stylesXml, /FFDCEBFA/);
+  assert.match(stylesXml, /FF5B6B92/);
+  assert.match(stylesXml, /FFFFFFFF/);
   assert.match(stylesXml, /FFFDE7E7/);
+  assert.match(stylesXml, /<alignment horizontal="center" vertical="center"\/>/);
   assert.match(sheetXml, /<c[^>]*r="A1"[^>]*s="\d+"/);
+  assert.match(sheetXml, /<c[^>]*r="A2"[^>]*s="\d+"/);
   assert.match(sheetXml, /<c[^>]*r="A3"[^>]*s="\d+"/);
 });
