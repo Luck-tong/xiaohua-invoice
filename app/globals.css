@@ -1987,8 +1987,9 @@ body {
 }
 
 .batch-stats .amount-stat strong {
+  overflow-wrap: anywhere;
   color: var(--blue);
-  font-size: 24px;
+  font-size: clamp(17px, 2vw, 24px);
 }
 
 .batch-stats .warning-stat {
@@ -2361,6 +2362,12 @@ body {
 .invoice-preview-list button.active {
   border-color: #b9c7f5;
   background: #fff;
+}
+
+.amount-preview-list h3 {
+  margin: 12px 10px 7px;
+  color: #59657a;
+  font-size: 10px;
 }
 
 .invoice-preview-list strong,

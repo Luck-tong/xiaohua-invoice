@@ -16,6 +16,7 @@ import {
 } from "./invoice-recognition";
 import type { InvoiceCategory } from "./invoice-recognition";
 import { filterFilesByCategories } from "./category-selection";
+import { summarizeInvoiceAmounts } from "./invoice-amount-summary";
 import { buildInvoiceNames } from "./invoice-naming";
 import {
   invoiceNamePrefix,
@@ -56,9 +57,10 @@ type HistoryEntry = {
 type PreviewDialog = {
   title: string;
   items: InvoiceFile[];
-  mode: "single" | "duplicates";
+  mode: "single" | "duplicates" | "amounts";
   activeId?: string;
   duplicateKey?: string;
+  showGeneratedNames?: boolean;
 };
 
 const HISTORY_KEY = "piaoli-download-history";
@@ -813,6 +815,9 @@ export default function Home() {
         (item) => invoiceDuplicateKey(item) === previewDialog.duplicateKey,
       )
     : [];
+  const amountPreviewSummary = summarizeInvoiceAmounts(
+    previewDialog?.mode === "amounts" ? previewDialog.items : [],
+  );
 
   return (
     <main>
@@ -1205,10 +1210,24 @@ export default function Home() {
                     items: completedByCategory,
                     mode: "single",
                     activeId: completedByCategory[0]?.id,
+                    showGeneratedNames: true,
                   });
                 }}
               ><span>已完成 · 查看分类</span><strong>{downloadableFiles.length}</strong></button>
-              <article className="amount-stat"><span>已选金额</span><strong>¥{selectedAmountTotal}</strong></article>
+              <button
+                type="button"
+                className="amount-stat"
+                disabled={selectedReadyFiles.length === 0}
+                onClick={() =>
+                  setPreviewDialog({
+                    title: "已选金额 · 分类与金额排行",
+                    items: selectedReadyFiles,
+                    mode: "amounts",
+                    activeId: selectedReadyFiles[0]?.id,
+                    showGeneratedNames: true,
+                  })
+                }
+              ><span>已选金额 · 点击查看</span><strong>¥{selectedAmountTotal}</strong></button>
               <button
                 type="button"
                 className={duplicateKeys.size ? "warning-stat" : ""}
@@ -1509,6 +1528,58 @@ export default function Home() {
                   ))}
                 </div>
               </>
+            ) : previewDialog.mode === "amounts" ? (
+              <div className="single-preview-layout">
+                <div className="invoice-preview-list amount-preview-list">
+                  <h3>所有分类</h3>
+                  {amountPreviewSummary.categories.map((group) => (
+                    <button
+                      type="button"
+                      key={group.category}
+                      onClick={() =>
+                        setPreviewDialog((current) => current ? {
+                          ...current,
+                          activeId: group.items[0]?.id,
+                        } : current)
+                      }
+                    >
+                      <strong>{group.category}</strong>
+                      <span>{group.items.length} 份 · ¥{group.total.toFixed(2)}</span>
+                    </button>
+                  ))}
+                  <h3>金额最高 5 份</h3>
+                  {amountPreviewSummary.highest.map((item, index) => (
+                    <button
+                      type="button"
+                      className={item.id === activePreviewItem?.id ? "active" : ""}
+                      key={`highest-${item.id}`}
+                      onClick={() =>
+                        setPreviewDialog((current) => current ? { ...current, activeId: item.id } : current)
+                      }
+                    >
+                      <strong>{index + 1}. {generatedName(item)}</strong>
+                      <span>{item.category} · ¥{Number(item.amount).toFixed(2)}</span>
+                    </button>
+                  ))}
+                  <h3>金额最低 5 份</h3>
+                  {amountPreviewSummary.lowest.map((item, index) => (
+                    <button
+                      type="button"
+                      className={item.id === activePreviewItem?.id ? "active" : ""}
+                      key={`lowest-${item.id}`}
+                      onClick={() =>
+                        setPreviewDialog((current) => current ? { ...current, activeId: item.id } : current)
+                      }
+                    >
+                      <strong>{index + 1}. {generatedName(item)}</strong>
+                      <span>{item.category} · ¥{Number(item.amount).toFixed(2)}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="single-preview-document">
+                  {activePreviewItem && <InvoiceDocumentPreview item={activePreviewItem} />}
+                </div>
+              </div>
             ) : (
               <div className="single-preview-layout">
                 <div className="invoice-preview-list">
@@ -1523,7 +1594,9 @@ export default function Home() {
                         )
                       }
                     >
-                      <strong title={item.file.name}>{item.file.name}</strong>
+                      <strong title={previewDialog.showGeneratedNames ? generatedName(item) : item.file.name}>
+                        {previewDialog.showGeneratedNames ? generatedName(item) : item.file.name}
+                      </strong>
                       <span>分类：{item.category}</span>
                       <span>来源：{item.source || "直接添加"}</span>
                       {(!item.number || !item.amount) && (
