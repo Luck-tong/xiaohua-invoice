@@ -192,6 +192,7 @@ export function parseInvoiceText(text: string, filename = "") {
     .replace(/[：﹕]/g, ":")
     .replace(/[，]/g, ",");
   const hints = filenameHints(filename);
+  const compact = normalized.replace(/\s+/g, "");
 
   const labelledNumber = normalized.match(
     /发票号码\s*:?\s*([0-9\s]{8,30})/,
@@ -207,6 +208,28 @@ export function parseInvoiceText(text: string, filename = "") {
     ? labelledDigits
     : fallbackNumber || hints.number;
 
+  let amount = "";
+
+  const ticketAmount = compact.match(
+    /(?:票价|退票费):?[¥￥]?([\d,]+(?:\.\d{1,2})?)/,
+  )?.[1];
+  if (ticketAmount) amount = cleanAmount(ticketAmount);
+
+  if (!amount && /(?:铁路电子客票|电子客票)/.test(compact)) {
+    const currencyAmount = compact.match(/[¥￥]([\d,]+(?:\.\d{1,2})?)/)?.[1];
+    if (currencyAmount) amount = cleanAmount(currencyAmount);
+  }
+
+  if (!amount) {
+    const totalStart = compact.indexOf("价税合计");
+    if (totalStart >= 0) {
+      const totalArea = compact.slice(totalStart, totalStart + 600);
+      const currencyAmounts = [...totalArea.matchAll(/[¥￥]([\d,]+(?:\.\d{1,2})?)/g)];
+      const lastAmount = currencyAmounts.at(-1)?.[1];
+      if (lastAmount) amount = cleanAmount(lastAmount);
+    }
+  }
+
   const amountPatterns = [
     /(?:票价|退票费)\s*:?\s*[¥￥]?\s*([\d,]+(?:\.\d{1,2})?)/,
     /[零壹贰叁肆伍陆柒捌玖拾佰仟万亿圆元角分整]{2,}[\s\S]{0,40}?[¥￥]\s*([\d,]+(?:\.\d{1,2})?)/,
@@ -214,12 +237,13 @@ export function parseInvoiceText(text: string, filename = "") {
     /价税合计[\s\S]{0,80}?[¥￥]\s*([\d,]+(?:\.\d{1,2})?)/,
   ];
 
-  let amount = "";
-  for (const pattern of amountPatterns) {
-    const match = normalized.match(pattern)?.[1];
-    if (match) {
-      amount = cleanAmount(match);
-      break;
+  if (!amount) {
+    for (const pattern of amountPatterns) {
+      const match = normalized.match(pattern)?.[1];
+      if (match) {
+        amount = cleanAmount(match);
+        break;
+      }
     }
   }
 
