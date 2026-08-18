@@ -249,6 +249,11 @@ export default function Home() {
     [invoiceFiles],
   );
 
+  const errorFiles = useMemo(
+    () => invoiceFiles.filter((item) => item.status === "error"),
+    [invoiceFiles],
+  );
+
   const selectedReadyFiles = useMemo(
     () => downloadableFiles.filter((item) => selectedIds.has(item.id)),
     [downloadableFiles, selectedIds],
@@ -1210,6 +1215,23 @@ export default function Home() {
                 <span>重复组数 · 已含在识别数中</span>
                 <strong>{duplicateKeys.size} 组</strong>
                 <small>涉及 {duplicateFileCount} 份 · 点击对比</small>
+              </button>
+              <button
+                type="button"
+                className={errorFiles.length ? "error-stat" : ""}
+                disabled={errorFiles.length === 0}
+                onClick={() =>
+                  setPreviewDialog({
+                    title: "处理错误发票",
+                    items: errorFiles,
+                    mode: "single",
+                    activeId: errorFiles[0]?.id,
+                  })
+                }
+              >
+                <span>错误组数 · 不含在已识别中</span>
+                <strong>{errorFiles.length} 组</strong>
+                <small>属于未完成 · 点击查看原因</small>
               </button>
             </div>
             {groupedInvoiceFiles.length > 0 && (

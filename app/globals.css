@@ -1995,6 +1995,16 @@ body {
   color: #b46b1c;
 }
 
+.batch-stats .error-stat {
+  border-color: #efc2c2;
+  background: #fff5f5;
+}
+
+.batch-stats .error-stat strong,
+.batch-stats .error-stat small {
+  color: #c44747;
+}
+
 .category-summary {
   margin: 0 0 12px;
   padding: 11px;
