@@ -1967,6 +1967,15 @@ body {
   color: #a76c22;
 }
 
+.batch-stats .completed-stat {
+  border-color: #bfe4d9;
+  background: #f1fbf7;
+}
+
+.batch-stats .completed-stat strong {
+  color: #168164;
+}
+
 .batch-stats .amount-stat {
   grid-column: 1 / -1;
   background: linear-gradient(110deg, #edf2ff, #effbfc);

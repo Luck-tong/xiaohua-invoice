@@ -1177,6 +1177,22 @@ export default function Home() {
                   })
                 }
               ><span>已勾选 · 点击查看</span><strong>{selectedReadyFiles.length}</strong></button>
+              <button
+                type="button"
+                className="completed-stat"
+                disabled={downloadableFiles.length === 0}
+                onClick={() => {
+                  const completedByCategory = [...downloadableFiles].sort((left, right) =>
+                    left.category.localeCompare(right.category, "zh-CN"),
+                  );
+                  setPreviewDialog({
+                    title: "已完成发票 · 按分类查看",
+                    items: completedByCategory,
+                    mode: "single",
+                    activeId: completedByCategory[0]?.id,
+                  });
+                }}
+              ><span>已完成 · 查看分类</span><strong>{downloadableFiles.length}</strong></button>
               <article className="amount-stat"><span>已选金额</span><strong>¥{selectedAmountTotal}</strong></article>
               <button
                 type="button"
@@ -1476,6 +1492,7 @@ export default function Home() {
                       }
                     >
                       <strong title={item.file.name}>{item.file.name}</strong>
+                      <span>分类：{item.category}</span>
                       <span>来源：{item.source || "直接添加"}</span>
                       {(!item.number || !item.amount) && (
                         <span className="incomplete-reason">原因：{incompleteReason(item)}</span>
