@@ -155,14 +155,24 @@ button {
 .hero::before {
   content: "";
   position: absolute;
-  inset: 0;
-  opacity: 0.58;
-  background-image:
-    linear-gradient(rgba(75, 109, 225, 0.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(75, 109, 225, 0.07) 1px, transparent 1px);
-  background-size: 36px 36px;
-  mask-image: linear-gradient(to bottom, black, transparent 74%);
+  inset: -20%;
+  opacity: 0.72;
+  background:
+    radial-gradient(circle at 22% 34%, rgba(91, 107, 146, 0.17), transparent 28%),
+    radial-gradient(circle at 76% 42%, rgba(111, 147, 165, 0.15), transparent 30%),
+    radial-gradient(circle at 52% 78%, rgba(143, 154, 183, 0.11), transparent 26%);
+  filter: blur(10px);
+  animation: ambient-drift 16s ease-in-out infinite alternate;
   pointer-events: none;
+}
+
+@keyframes ambient-drift {
+  from {
+    transform: translate3d(-2%, -1%, 0) scale(1);
+  }
+  to {
+    transform: translate3d(3%, 2%, 0) scale(1.06);
+  }
 }
 
 .hero > * {
@@ -1465,10 +1475,27 @@ button {
   color: #68758a;
   border: 1px solid #dce3ec;
   background:
-    linear-gradient(rgba(91, 107, 146, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(91, 107, 146, 0.045) 1px, transparent 1px),
+    radial-gradient(circle at 18% 50%, rgba(91, 107, 146, 0.13), transparent 30%),
+    radial-gradient(circle at 82% 45%, rgba(111, 147, 165, 0.12), transparent 28%),
     linear-gradient(105deg, #f0f3f7, #edf3f4);
-  background-size: 28px 28px, 28px 28px, auto;
+  background-size: 130% 180%, 135% 190%, 100% 100%;
+  animation: footer-ambient 18s ease-in-out infinite alternate;
+}
+
+@keyframes footer-ambient {
+  from {
+    background-position: 0% 50%, 100% 50%, 0 0;
+  }
+  to {
+    background-position: 16% 42%, 84% 58%, 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero::before,
+  .site-footer {
+    animation: none;
+  }
 }
 
 .footer-name {
@@ -2853,9 +2880,12 @@ body {
   }
 
   .site-header,
-  .workspace-shell,
-  .site-footer {
+  .workspace-shell {
     width: calc(100% - 28px);
+  }
+
+  .site-footer {
+    width: 100%;
   }
 
   .workspace-shell {
