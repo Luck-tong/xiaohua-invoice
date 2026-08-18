@@ -91,6 +91,33 @@ test("prefers the explicit small total over a trailing tax amount", () => {
   assert.equal(result.amount, "166.6");
 });
 
+test("does not treat an archive copy suffix as the invoice amount", () => {
+  const result = parseInvoiceText(
+    "发票号码：26317000001248082454 合计 ¥832.08 ¥49.92 882.00（小写）捌佰捌拾贰圆整 价税合计（大写）",
+    "电子发票 (1).pdf",
+  );
+
+  assert.equal(result.amount, "882");
+});
+
+test("verifies a total against amount plus tax in reversed PDF token order", () => {
+  const result = parseInvoiceText(
+    "价税合计（大写） 合计 （小写） 备注 开票人：壹佰陆拾陆圆陆角整 ¥166.60 李娟 164.95 ¥1.65 ¥",
+    "26432000001375360096-上海市建纬律师事务所.pdf",
+  );
+
+  assert.equal(result.amount, "166.6");
+});
+
+test("keeps the verified total instead of the trailing tax in reversed token order", () => {
+  const result = parseInvoiceText(
+    "价税合计（大写） 合计 （小写） 备注 开票人：玖拾玖圆整 ¥99.00 朱琛 93.40 ¥5.60 ¥",
+    "dzfp_26112000002646190696_上海市建纬律师事务所_20260629115102.pdf",
+  );
+
+  assert.equal(result.amount, "99");
+});
+
 test("rejects a tax identifier mistaken for an amount and reads the small total", () => {
   const result = parseInvoiceText(
     "统一社会信用代码 31310000425013819A 价税合计 ¥31310000425013819 （小写）28.97",

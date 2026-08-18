@@ -1236,7 +1236,7 @@ export default function Home() {
                 disabled={selectedReadyFiles.length === 0}
                 onClick={() =>
                   setPreviewDialog({
-                    title: "已选金额 · 分类与金额排行",
+                    title: "已选金额 · 金额排行",
                     items: selectedReadyFiles,
                     mode: "amounts",
                     activeId: selectedReadyFiles[0]?.id,
@@ -1585,22 +1585,6 @@ export default function Home() {
             ) : previewDialog.mode === "amounts" ? (
               <div className="single-preview-layout">
                 <div className="invoice-preview-list amount-preview-list">
-                  <h3>所有分类</h3>
-                  {amountPreviewSummary.categories.map((group) => (
-                    <button
-                      type="button"
-                      key={group.category}
-                      onClick={() =>
-                        setPreviewDialog((current) => current ? {
-                          ...current,
-                          activeId: group.items[0]?.id,
-                        } : current)
-                      }
-                    >
-                      <strong>{group.category}</strong>
-                      <span>{group.items.length} 份 · ¥{group.total.toFixed(2)}</span>
-                    </button>
-                  ))}
                   <h3>金额最高 5 份</h3>
                   {amountPreviewSummary.highest.map((item, index) => (
                     <button

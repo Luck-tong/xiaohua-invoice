@@ -209,10 +209,69 @@ function validInvoiceNumber(value: string) {
 function filenameHints(filename: string) {
   const number = filename.match(/(?:^|\D)(\d{20})(?:\D|$)/)?.[1] ?? "";
   const amount =
-    filename.match(/[（(](\d+(?:\.\d{1,2})?)[）)]/)?.[1] ??
+    filename.match(/\d{8,20}（(\d+(?:\.\d{1,2})?)）/)?.[1] ??
     filename.match(/-(\d+(?:\.\d{1,2})?)元(?:-|】)/)?.[1] ??
     "";
   return { number, amount: amount ? cleanAmount(amount) : "" };
+}
+
+function closeAmount(left: number, right: number) {
+  return Math.abs(left - right) <= 0.011;
+}
+
+function invoiceTotalAmount(text: string) {
+  const compact = text
+    .replace(/(?<=\d)\s+(?=\d)/g, "|")
+    .replace(/\s+/g, "");
+  const totalIndex = Math.max(
+    compact.indexOf("价税合计"),
+    compact.indexOf("价税含计"),
+  );
+  if (totalIndex < 0) return "";
+
+  const totalArea = compact.slice(
+    Math.max(0, totalIndex - 320),
+    totalIndex + 520,
+  );
+  const beforeSmall = totalArea.match(
+    /(-?[0-9][\d,]*(?:\.\d{1,2})?)[（(]?小写[）)]?/,
+  )?.[1];
+  const cleanedBeforeSmall = beforeSmall ? cleanPositiveAmount(beforeSmall) : "";
+  if (cleanedBeforeSmall) return cleanedBeforeSmall;
+
+  const directAfterSmall = totalArea.match(
+    /小写[）)》]?[:：]?[¥￥]?(-?[0-9][\d,]*(?:\.\d{1,2})?)/,
+  )?.[1];
+  if (directAfterSmall) return cleanPositiveAmount(directAfterSmall);
+
+  const values = [...totalArea.matchAll(
+    /(?<![\d.])-?[0-9][\d,]*\.\d{1,2}(?!\d)/g,
+  )].map((match) => ({
+    raw: match[0],
+    value: Math.abs(Number(match[0].replace(/,/g, ""))),
+  })).filter((candidate) =>
+    Number.isFinite(candidate.value) && candidate.value <= 999_999_999_999
+  );
+
+  const verifiedTotals = values.filter((target, targetIndex) =>
+    values.some((left, leftIndex) =>
+      leftIndex !== targetIndex && values.some((right, rightIndex) =>
+        rightIndex !== targetIndex &&
+        rightIndex !== leftIndex &&
+        closeAmount(left.value + right.value, target.value)
+      )
+    )
+  );
+  if (verifiedTotals.length > 0) {
+    return String(Math.max(...verifiedTotals.map((candidate) => candidate.value)));
+  }
+
+  const labelledAfterSmall = totalArea.match(
+    /小写[）)》]?[^0-9]{0,140}[¥￥]?(-?[0-9][\d,]*(?:\.\d{1,2})?)/,
+  )?.[1];
+  if (labelledAfterSmall) return cleanPositiveAmount(labelledAfterSmall);
+
+  return "";
 }
 
 export function parseInvoiceText(text: string, filename = "") {
@@ -264,35 +323,11 @@ export function parseInvoiceText(text: string, filename = "") {
     if (currencyAmount) amount = cleanAmount(currencyAmount);
   }
 
-  if (!amount) {
-    const directSmallTotal = compact.match(
-      /小写[）)》]?[:：]?[¥￥]?([0-9][\d,]*(?:\.\d{1,2})?)/,
-    )?.[1];
-    if (directSmallTotal) amount = cleanAmount(directSmallTotal);
-  }
-
-  if (!amount) {
-    const totalStart = compact.indexOf("价税合计");
-    if (totalStart >= 0) {
-      const totalArea = compact.slice(totalStart, totalStart + 600);
-      const currencyAmounts = [...totalArea.matchAll(/[¥￥]([\d,]+(?:\.\d{1,2})?)/g)];
-      const lastAmount = currencyAmounts.at(-1)?.[1];
-      if (lastAmount) amount = cleanAmount(lastAmount);
-    }
-  }
-
-  if (!amount) {
-    const smallTotal = compact.match(
-      /小写[）)》]?[^0-9]{0,20}([0-9][\d,]*(?:\.\d{1,2})?)/,
-    )?.[1];
-    if (smallTotal) amount = cleanAmount(smallTotal);
-  }
+  if (!amount) amount = invoiceTotalAmount(normalized);
 
   const amountPatterns = [
     /(?:票价|退票费)\s*:?\s*[¥￥]?\s*([\d,]+(?:\.\d{1,2})?)/,
-    /[零壹贰叁肆伍陆柒捌玖拾佰仟万亿圆元角分整]{2,}[\s\S]{0,40}?[¥￥]\s*([\d,]+(?:\.\d{1,2})?)/,
     /(?:小写)[）)]?\s*[¥￥]\s*([\d,]+(?:\.\d{1,2})?)/,
-    /价税合计[\s\S]{0,80}?[¥￥]\s*([\d,]+(?:\.\d{1,2})?)/,
   ];
 
   if (!amount) {
