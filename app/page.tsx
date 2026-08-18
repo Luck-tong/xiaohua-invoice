@@ -17,6 +17,10 @@ import {
 import type { InvoiceCategory } from "./invoice-recognition";
 import { filterFilesByCategories } from "./category-selection";
 import { buildInvoiceNames } from "./invoice-naming";
+import {
+  invoiceNamePrefix,
+  isDownloadableInvoice,
+} from "./invoice-readiness";
 import { createTaskQueue } from "./task-queue";
 
 type FileStatus =
@@ -97,8 +101,9 @@ function readHints(name: string) {
 }
 
 function renamedFile(item: InvoiceFile) {
-  if (!item.number || !item.amount) return "等待识别后生成";
-  return `${item.number}（${item.amount}）${extensionOf(item.file.name)}`;
+  const prefix = invoiceNamePrefix(item);
+  if (!prefix || !item.amount) return "等待识别后生成";
+  return `${prefix}（${item.amount}）${extensionOf(item.file.name)}`;
 }
 
 function invoiceDuplicateKey(item: InvoiceFile) {
@@ -114,6 +119,7 @@ function incompleteReason(item: InvoiceFile) {
   if (item.status === "error") {
     return `处理失败：${item.errorMessage || "无法读取该文件"}`;
   }
+  if (item.category === "微信截图发票" && !item.amount) return "缺少交易金额";
   if (!item.number && !item.amount) return "缺少发票号码和金额";
   if (!item.number) return "缺少发票号码";
   if (!item.amount) return "缺少发票金额";
@@ -240,12 +246,12 @@ export default function Home() {
   );
 
   const downloadableFiles = useMemo(
-    () => invoiceFiles.filter((item) => item.number && item.amount),
+    () => invoiceFiles.filter(isDownloadableInvoice),
     [invoiceFiles],
   );
 
   const incompleteFiles = useMemo(
-    () => invoiceFiles.filter((item) => !item.number || !item.amount),
+    () => invoiceFiles.filter((item) => !isDownloadableInvoice(item)),
     [invoiceFiles],
   );
 
@@ -305,7 +311,7 @@ export default function Home() {
     return buildInvoiceNames(
       downloadableFiles.map((item) => ({
         id: item.id,
-        number: item.number,
+        number: invoiceNamePrefix(item),
         amount: item.amount,
         fileName: item.file.name,
       })),
@@ -406,7 +412,11 @@ export default function Home() {
             category: result.category,
             method: result.method,
             progress: 100,
-            status: number && amount ? "ready" : "review",
+            status: isDownloadableInvoice({
+              number,
+              amount,
+              category: result.category,
+            }) ? "ready" : "review",
           });
           return;
         } catch (error) {
