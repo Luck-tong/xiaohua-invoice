@@ -1534,6 +1534,21 @@ button {
     border-radius: 12px;
   }
 
+  .invoice-preview-heading {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .invoice-preview-filter {
+    width: 100%;
+    order: 3;
+    margin-left: 0;
+  }
+
+  .invoice-preview-filter select {
+    width: 100%;
+  }
+
   .single-preview-layout {
     grid-template-columns: 1fr;
     grid-template-rows: 150px minmax(0, 1fr);
@@ -2319,6 +2334,22 @@ body {
   margin: 4px 0 0;
   color: var(--navy);
   font-size: 19px;
+}
+
+.invoice-preview-filter {
+  display: grid;
+  gap: 5px;
+  margin-left: auto;
+}
+
+.invoice-preview-filter select {
+  min-width: 230px;
+  padding: 9px 34px 9px 11px;
+  border: 1px solid #d7deed;
+  border-radius: 9px;
+  color: #27324b;
+  background: #f8faff;
+  font: inherit;
 }
 
 .invoice-preview-heading > button {

@@ -61,6 +61,7 @@ type PreviewDialog = {
   activeId?: string;
   duplicateKey?: string;
   showGeneratedNames?: boolean;
+  categoryFilter?: string;
 };
 
 const HISTORY_KEY = "piaoli-download-history";
@@ -804,9 +805,21 @@ export default function Home() {
     }
   }
 
-  const activePreviewItem = previewDialog?.items.find(
-    (item) => item.id === previewDialog.activeId,
-  ) ?? previewDialog?.items[0];
+  const previewCategories = previewDialog?.mode === "single" &&
+    previewDialog.showGeneratedNames
+    ? [...new Set(previewDialog.items.map((item) => item.category))].sort(
+        (left, right) => left.localeCompare(right, "zh-CN"),
+      )
+    : [];
+  const filteredPreviewItems = previewDialog?.mode === "single" &&
+    previewDialog.categoryFilter
+    ? previewDialog.items.filter(
+        (item) => item.category === previewDialog.categoryFilter,
+      )
+    : previewDialog?.items ?? [];
+  const activePreviewItem = filteredPreviewItems.find(
+    (item) => item.id === previewDialog?.activeId,
+  ) ?? filteredPreviewItems[0];
   const previewDuplicateKeys = previewDialog?.mode === "duplicates"
     ? [...new Set(previewDialog.items.map(invoiceDuplicateKey))]
     : [];
@@ -1483,6 +1496,36 @@ export default function Home() {
                 <span>原票核对</span>
                 <h2 id="invoice-preview-title">{previewDialog.title}</h2>
               </div>
+              {previewCategories.length > 0 && (
+                <label className="invoice-preview-filter">
+                  <span>分类筛选</span>
+                  <select
+                    value={previewDialog.categoryFilter ?? ""}
+                    onChange={(event) => {
+                      const categoryFilter = event.target.value;
+                      const firstItem = categoryFilter
+                        ? previewDialog.items.find(
+                            (item) => item.category === categoryFilter,
+                          )
+                        : previewDialog.items[0];
+                      setPreviewDialog((current) => current ? {
+                        ...current,
+                        categoryFilter,
+                        activeId: firstItem?.id,
+                      } : current);
+                    }}
+                  >
+                    <option value="">全部分类（{previewDialog.items.length}）</option>
+                    {previewCategories.map((category) => (
+                      <option value={category} key={category}>
+                        {category}（{previewDialog.items.filter(
+                          (item) => item.category === category,
+                        ).length}）
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <button
                 type="button"
                 aria-label="关闭发票预览"
@@ -1583,7 +1626,7 @@ export default function Home() {
             ) : (
               <div className="single-preview-layout">
                 <div className="invoice-preview-list">
-                  {previewDialog.items.map((item) => (
+                  {filteredPreviewItems.map((item) => (
                     <button
                       type="button"
                       className={item.id === activePreviewItem?.id ? "active" : ""}
