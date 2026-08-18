@@ -1502,7 +1502,7 @@ export default function Home() {
               {showPreviewSelectors && (
                 <div className="invoice-preview-filters">
                   <label className="invoice-preview-filter">
-                    <span>分类</span>
+                    <span>分类筛选</span>
                     <select
                       value={previewDialog.categoryFilter ?? ""}
                       onChange={(event) => {
@@ -1529,24 +1529,12 @@ export default function Home() {
                       ))}
                     </select>
                   </label>
-                  <label className="invoice-preview-filter invoice-preview-file-filter">
-                    <span>发票号码或图片金额</span>
-                    <select
-                      value={activePreviewItem?.id ?? ""}
-                      onChange={(event) =>
-                        setPreviewDialog((current) => current ? {
-                          ...current,
-                          activeId: event.target.value,
-                        } : current)
-                      }
-                    >
-                      {filteredPreviewItems.map((item) => (
-                        <option value={item.id} key={item.id}>
-                          {generatedName(item)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <div className="invoice-preview-current-file">
+                    <span>当前发票</span>
+                    <strong title={activePreviewItem ? generatedName(activePreviewItem) : ""}>
+                      {activePreviewItem ? generatedName(activePreviewItem) : "暂无发票"}
+                    </strong>
+                  </div>
                 </div>
               )}
               <button

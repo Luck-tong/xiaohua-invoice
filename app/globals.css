@@ -1546,6 +1546,16 @@ button {
     margin-left: 0;
   }
 
+  .invoice-preview-current-file {
+    width: 100%;
+    margin-left: 0;
+    text-align: left;
+  }
+
+  .invoice-preview-current-file strong {
+    max-width: none;
+  }
+
   .invoice-preview-filter,
   .invoice-preview-filter select {
     width: 100%;
@@ -2353,11 +2363,12 @@ body {
 }
 
 .invoice-preview-filters {
+  flex: 1;
   min-width: 0;
   display: flex;
   align-items: end;
   gap: 10px;
-  margin-left: auto;
+  margin-left: 36px;
 }
 
 .invoice-preview-filter {
@@ -2375,9 +2386,21 @@ body {
   font: inherit;
 }
 
-.invoice-preview-file-filter select {
-  min-width: 320px;
+.invoice-preview-current-file {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  margin-left: auto;
+  text-align: right;
+}
+
+.invoice-preview-current-file strong {
   max-width: 430px;
+  overflow: hidden;
+  color: #27324b;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .invoice-preview-heading > button {
