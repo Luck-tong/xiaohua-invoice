@@ -1546,6 +1546,13 @@ button {
     margin-left: 0;
   }
 
+  .duplicate-delete-action {
+    width: 100%;
+    justify-content: space-between;
+    order: 3;
+    margin-left: 0;
+  }
+
   .invoice-preview-current-file {
     width: 100%;
     margin-left: 0;
@@ -2464,6 +2471,36 @@ body {
   white-space: nowrap;
 }
 
+.duplicate-delete-action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.duplicate-delete-action span {
+  color: #8a6470;
+  font-size: 10px;
+}
+
+.duplicate-delete-action button {
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid #e7b8bf;
+  border-radius: 8px;
+  color: #b33b4b;
+  background: #fff6f7;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.duplicate-delete-action button:disabled {
+  border-color: #e1e5ec;
+  color: #a8afbb;
+  background: #f5f6f8;
+  cursor: not-allowed;
+}
+
 .invoice-preview-heading > button {
   width: 36px;
   height: 36px;
@@ -2607,6 +2644,30 @@ body {
 .invoice-preview-meta {
   padding: 10px 12px;
   background: #fff;
+}
+
+.duplicate-delete-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 7px;
+  color: #b33b4b;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.duplicate-delete-choice input {
+  width: 15px;
+  height: 15px;
+  accent-color: #c84b5b;
+}
+
+.invoice-preview-meta .duplicate-delete-choice span {
+  display: inline;
+  margin: 0;
+  color: inherit;
+  font-size: inherit;
 }
 
 .invoice-preview-loading {

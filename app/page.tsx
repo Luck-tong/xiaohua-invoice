@@ -250,6 +250,9 @@ export default function Home() {
     () => new Set(),
   );
   const [duplicateGroupExpanded, setDuplicateGroupExpanded] = useState(false);
+  const [duplicateDeleteIds, setDuplicateDeleteIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [previewDialog, setPreviewDialog] = useState<PreviewDialog | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const processingQueueRef = useRef(createTaskQueue(3));
@@ -555,6 +558,59 @@ export default function Home() {
       const next = new Set(current);
       next.delete(id);
       return next;
+    });
+  }
+
+  function toggleDuplicateDelete(id: string) {
+    setDuplicateDeleteIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function deleteSelectedDuplicateFiles() {
+    if (!previewDialog || previewDialog.mode !== "duplicates") return;
+    const currentKey = previewDialog.duplicateKey;
+    const currentGroup = previewDialog.items.filter(
+      (item) => invoiceDuplicateKey(item) === currentKey,
+    );
+    const deleteIds = new Set(
+      currentGroup
+        .filter((item) => duplicateDeleteIds.has(item.id))
+        .map((item) => item.id),
+    );
+    if (deleteIds.size === 0 || deleteIds.size >= currentGroup.length) return;
+    if (!window.confirm(`确定从当前批次删除 ${deleteIds.size} 张重复发票吗？`)) return;
+
+    setFiles((current) => current.filter((item) => !deleteIds.has(item.id)));
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      deleteIds.forEach((id) => next.delete(id));
+      return next;
+    });
+    setFolderDuplicateIds((current) => {
+      const next = new Set(current);
+      deleteIds.forEach((id) => next.delete(id));
+      return next;
+    });
+    setDuplicateDeleteIds(new Set());
+    setPreviewDialog((current) => {
+      if (!current || current.mode !== "duplicates") return current;
+      const remainingCurrentGroup = current.items.filter(
+        (item) => invoiceDuplicateKey(item) === currentKey && !deleteIds.has(item.id),
+      );
+      const remainingItems = current.items.filter((item) => {
+        if (invoiceDuplicateKey(item) !== currentKey) return true;
+        return remainingCurrentGroup.length > 1 && !deleteIds.has(item.id);
+      });
+      const nextKey = remainingCurrentGroup.length > 1
+        ? currentKey
+        : remainingItems[0] ? invoiceDuplicateKey(remainingItems[0]) : "";
+      return nextKey
+        ? { ...current, items: remainingItems, duplicateKey: nextKey }
+        : null;
     });
   }
 
@@ -882,6 +938,9 @@ export default function Home() {
         (item) => invoiceDuplicateKey(item) === previewDialog.duplicateKey,
       )
     : [];
+  const selectedDuplicateDeleteCount = comparedPreviewItems.filter((item) =>
+    duplicateDeleteIds.has(item.id)
+  ).length;
   const amountPreviewSummary = summarizeInvoiceAmounts(
     previewDialog?.mode === "amounts" ? filteredPreviewItems : [],
   );
@@ -1295,14 +1354,15 @@ export default function Home() {
                 type="button"
                 className={duplicateKeys.size ? "warning-stat" : ""}
                 disabled={duplicateKeys.size === 0}
-                onClick={() =>
+                onClick={() => {
+                  setDuplicateDeleteIds(new Set());
                   setPreviewDialog({
                     title: "重复发票对比",
                     items: duplicateGroups.flatMap((group) => group.items),
                     mode: "duplicates",
                     duplicateKey: duplicateGroups[0]?.key,
-                  })
-                }
+                  });
+                }}
               >
                 <span>重复组数 · 已含在识别数中</span>
                 <strong>{duplicateKeys.size} 组</strong>
@@ -1359,14 +1419,15 @@ export default function Home() {
                       <button
                         type="button"
                         key={group.key}
-                        onClick={() =>
+                        onClick={() => {
+                          setDuplicateDeleteIds(new Set());
                           setPreviewDialog({
                             title: "重复发票对比",
                             items: duplicateGroups.flatMap((entry) => entry.items),
                             mode: "duplicates",
                             duplicateKey: group.key,
-                          })
-                        }
+                          });
+                        }}
                       >
                         <span>{item.number}（{item.amount}）</span>
                         <strong>{group.items.length} 份 · 对比</strong>
@@ -1631,6 +1692,20 @@ export default function Home() {
                   </div>
                 </div>
               )}
+              {previewDialog.mode === "duplicates" && (
+                <div className="duplicate-delete-action">
+                  <span>
+                    已选 {selectedDuplicateDeleteCount} 张 · 每组至少保留 1 张
+                  </span>
+                  <button
+                    type="button"
+                    disabled={selectedDuplicateDeleteCount === 0}
+                    onClick={deleteSelectedDuplicateFiles}
+                  >
+                    删除选中发票
+                  </button>
+                </div>
+              )}
               <button
                 type="button"
                 aria-label="关闭发票预览"
@@ -1650,11 +1725,12 @@ export default function Home() {
                       type="button"
                       className={key === previewDialog.duplicateKey ? "active" : ""}
                       key={key}
-                      onClick={() =>
+                      onClick={() => {
+                        setDuplicateDeleteIds(new Set());
                         setPreviewDialog((current) =>
                           current ? { ...current, duplicateKey: key } : current,
-                        )
-                      }
+                        );
+                      }}
                     >
                       {item?.number}（{item?.amount}）
                     </button>
@@ -1665,6 +1741,18 @@ export default function Home() {
                   {comparedPreviewItems.map((item) => (
                     <article key={item.id}>
                       <div className="invoice-preview-meta">
+                        <label className="duplicate-delete-choice">
+                          <input
+                            type="checkbox"
+                            checked={duplicateDeleteIds.has(item.id)}
+                            disabled={
+                              !duplicateDeleteIds.has(item.id) &&
+                              selectedDuplicateDeleteCount >= comparedPreviewItems.length - 1
+                            }
+                            onChange={() => toggleDuplicateDelete(item.id)}
+                          />
+                          <span>选择删除</span>
+                        </label>
                         <strong title={item.file.name}>{item.file.name}</strong>
                         <span>来源：{item.source || "直接添加"}</span>
                         {!isDownloadableInvoice(item) && (
