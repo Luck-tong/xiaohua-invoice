@@ -30,8 +30,12 @@ import { createTaskQueue } from "./task-queue";
 import { adjacentPreviewId } from "./preview-keyboard";
 import {
   buildInvoiceLedgerRows,
-  INVOICE_LEDGER_HEADERS,
+  INVOICE_LEDGER_FIELDS,
+  invoiceLedgerRowIncomplete,
+  invoiceLedgerSelection,
 } from "./invoice-ledger";
+import type { InvoiceLedgerFieldKey, InvoiceLedgerInput } from "./invoice-ledger";
+import { styleInvoiceLedgerXlsx } from "./invoice-ledger-style";
 
 type FileStatus =
   | "queued"
@@ -255,6 +259,10 @@ export default function Home() {
   >(null);
   const [saveNotice, setSaveNotice] = useState("");
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+  const [excelDialogOpen, setExcelDialogOpen] = useState(false);
+  const [excelFields, setExcelFields] = useState<Set<InvoiceLedgerFieldKey>>(
+    () => new Set(INVOICE_LEDGER_FIELDS.map((field) => field.key)),
+  );
   const [folderCategories, setFolderCategories] = useState<Set<string>>(
     () => new Set(),
   );
@@ -666,6 +674,20 @@ export default function Home() {
     setFolderDialogOpen(true);
   }
 
+  function openExcelDialog() {
+    setExcelFields(new Set(INVOICE_LEDGER_FIELDS.map((field) => field.key)));
+    setExcelDialogOpen(true);
+  }
+
+  function toggleExcelField(key: InvoiceLedgerFieldKey) {
+    setExcelFields((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   function toggleDuplicateDownloadGroup() {
     const allSelected = folderDuplicateIds.size === duplicateFileIds.size;
     setFolderDuplicateIds(allSelected ? new Set() : new Set(duplicateFileIds));
@@ -826,13 +848,15 @@ export default function Home() {
 
   async function exportSelectedExcel() {
     const ready = selectedReadyFiles;
-    if (ready.length === 0) return;
+    const selectedFields = invoiceLedgerSelection(excelFields);
+    if (ready.length === 0 || selectedFields.length === 0) return;
 
+    setExcelDialogOpen(false);
     setBusyAction("excel");
     setSaveNotice("");
     try {
       const XLSX = await import("xlsx");
-      const rows = buildInvoiceLedgerRows(ready.map((item) => ({
+      const ledgerItems: InvoiceLedgerInput[] = ready.map((item) => ({
         originalName: item.file.name,
         currentName: generatedName(item),
         number: item.number,
@@ -844,42 +868,40 @@ export default function Home() {
         itemName: item.itemName,
         subtotal: item.subtotal,
         taxAmount: item.taxAmount,
-      })));
-      const sheet = XLSX.utils.aoa_to_sheet([[...INVOICE_LEDGER_HEADERS], ...rows]);
-      sheet["!cols"] = [
-        { wch: 8 },
-        { wch: 42 },
-        { wch: 42 },
-        { wch: 24 },
-        { wch: 14 },
-        { wch: 30 },
-        { wch: 24 },
-        { wch: 30 },
-        { wch: 24 },
-        { wch: 34 },
-        { wch: 14 },
-        { wch: 14 },
-      ];
-      sheet["!autofilter"] = { ref: `A1:L${rows.length + 1}` };
+      }));
+      const rows = buildInvoiceLedgerRows(ledgerItems, excelFields);
+      const sheet = XLSX.utils.aoa_to_sheet([
+        selectedFields.map((field) => field.label),
+        ...rows,
+      ]);
+      sheet["!cols"] = selectedFields.map((field) => ({ wch: field.width }));
+      const lastColumn = XLSX.utils.encode_col(selectedFields.length - 1);
+      sheet["!autofilter"] = { ref: `A1:${lastColumn}${rows.length + 1}` };
       sheet["!freeze"] = { xSplit: 0, ySplit: 1 };
       for (let row = 2; row <= rows.length + 1; row += 1) {
-        for (const column of ["D", "G", "I"]) {
-          const cell = sheet[`${column}${row}`];
-          if (cell) {
+        selectedFields.forEach((field, index) => {
+          const cell = sheet[`${XLSX.utils.encode_col(index)}${row}`];
+          if (!cell) return;
+          if (["number", "buyerTaxId", "sellerTaxId"].includes(field.key)) {
             cell.t = "s";
             cell.z = "@";
           }
-        }
-        for (const column of ["E", "K", "L"]) {
-          const cell = sheet[`${column}${row}`];
-          if (cell?.t === "n") cell.z = "¥#,##0.00";
-        }
+          if (["amount", "subtotal", "taxAmount"].includes(field.key) && cell.t === "n") {
+            cell.z = "¥#,##0.00";
+          }
+        });
       }
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, sheet, "发票台账");
       const data = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+      const styledData = await styleInvoiceLedgerXlsx(
+        data,
+        rows.length,
+        selectedFields.length,
+        ledgerItems.map(invoiceLedgerRowIncomplete),
+      );
       downloadBlob(
-        new Blob([data], {
+        new Blob([styledData], {
           type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         }),
         `发票台账（${ready.length}份）.xlsx`,
@@ -1527,7 +1549,7 @@ export default function Home() {
               <button
                 className="utility-button"
                 disabled={selectedReadyFiles.length === 0 || busyAction !== null}
-                onClick={exportSelectedExcel}
+                onClick={openExcelDialog}
               >
                 {busyAction === "excel" ? "正在导出" : "导出 Excel 台账"}
               </button>
@@ -1569,6 +1591,86 @@ export default function Home() {
           </div>
         </aside>
       </section>
+
+      {excelDialogOpen && (
+        <div
+          className="category-dialog-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setExcelDialogOpen(false);
+          }}
+        >
+          <section
+            className="category-dialog excel-field-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="excel-dialog-title"
+          >
+            <div className="category-dialog-heading">
+              <div>
+                <span>Excel 台账</span>
+                <h2 id="excel-dialog-title">选择要导出的字段</h2>
+              </div>
+              <button
+                type="button"
+                aria-label="关闭字段选择"
+                onClick={() => setExcelDialogOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <label className="category-dialog-all">
+              <input
+                type="checkbox"
+                checked={excelFields.size === INVOICE_LEDGER_FIELDS.length}
+                onChange={(event) =>
+                  setExcelFields(
+                    event.target.checked
+                      ? new Set(INVOICE_LEDGER_FIELDS.map((field) => field.key))
+                      : new Set(),
+                  )
+                }
+              />
+              <span>全选所有字段</span>
+              <strong>{excelFields.size}/{INVOICE_LEDGER_FIELDS.length} 列</strong>
+            </label>
+
+            <div className="category-dialog-list excel-field-list">
+              {INVOICE_LEDGER_FIELDS.map((field) => (
+                <label key={field.key}>
+                  <input
+                    type="checkbox"
+                    checked={excelFields.has(field.key)}
+                    onChange={() => toggleExcelField(field.key)}
+                  />
+                  <span>{field.label}</span>
+                </label>
+              ))}
+            </div>
+
+            <p className="excel-field-note">
+              无法识别的字段会留空，并在 Excel 中将该发票整行标为浅红色。
+            </p>
+            <div className="category-dialog-footer">
+              <span>已选择 {excelFields.size} 列 · {selectedReadyFiles.length} 份发票</span>
+              <div>
+                <button type="button" onClick={() => setExcelDialogOpen(false)}>
+                  取消
+                </button>
+                <button
+                  type="button"
+                  className="confirm"
+                  disabled={excelFields.size === 0}
+                  onClick={exportSelectedExcel}
+                >
+                  导出 Excel 台账
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
 
       {folderDialogOpen && (
         <div

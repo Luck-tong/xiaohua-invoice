@@ -2279,6 +2279,28 @@ body {
   padding: 8px 0;
 }
 
+.excel-field-dialog {
+  max-width: 760px;
+}
+
+.excel-field-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.excel-field-list label:nth-child(2n) {
+  border-left: 1px solid #e5eaf5;
+}
+
+.excel-field-note {
+  margin: 0;
+  padding: 14px 28px;
+  color: #a95050;
+  background: #fff7f7;
+  border-top: 1px solid #f2dada;
+  font-size: 14px;
+}
+
 .category-dialog-list label + label {
   border-top: 1px solid #f0f2f6;
 }
@@ -2821,6 +2843,14 @@ body {
 }
 
 @media (max-width: 800px) {
+  .excel-field-list {
+    grid-template-columns: 1fr;
+  }
+
+  .excel-field-list label:nth-child(2n) {
+    border-left: 0;
+  }
+
   .site-header,
   .workspace-shell,
   .site-footer {
