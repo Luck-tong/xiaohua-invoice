@@ -58,6 +58,54 @@ test("keeps the exact platform usage item name from the full invoice text", () =
   );
 });
 
+test("extracts the ledger parties, first item, subtotal, tax, and tax-inclusive amount", () => {
+  const result = parseInvoiceText(`
+    电子发票（普通发票） 发票号码：26912000000461724376
+    购买方信息 名称：上海市建纬律师事务所
+    统一社会信用代码/纳税人识别号：31310000425013819A
+    销售方信息 名称：大连祖君宏正黄旗餐饮有限公司
+    统一社会信用代码/纳税人识别号：91210202MADFQLJ04K
+    项目名称 规格型号 单位 数量 单价 金额 税率/征收率 税额
+    *生产生活服务*餐饮服务 1 726.42 726.42 6% 43.58
+    *生产生活服务*其他服务 1 10.00 10.00
+    合计 ¥726.42 ¥43.58
+    价税合计（小写）¥770.00
+  `, "26912000000461724376.pdf");
+
+  assert.deepEqual(result, {
+    number: "26912000000461724376",
+    amount: "770",
+    buyerName: "上海市建纬律师事务所",
+    buyerTaxId: "31310000425013819A",
+    sellerName: "大连祖君宏正黄旗餐饮有限公司",
+    sellerTaxId: "91210202MADFQLJ04K",
+    itemName: "生产生活服务-餐饮服务",
+    subtotal: "726.42",
+    taxAmount: "43.58",
+  });
+});
+
+test("leaves subtotal and tax blank when they cannot be verified against the invoice total", () => {
+  const result = parseInvoiceText(
+    "发票号码：26912000000461724376 项目名称 *生产生活服务*餐饮服务 合计 726.42 40.00 价税合计（小写）770.00",
+    "26912000000461724376.pdf",
+  );
+
+  assert.equal(result.amount, "770");
+  assert.equal(result.subtotal, "");
+  assert.equal(result.taxAmount, "");
+});
+
+test("separates buyer and seller names in row-ordered PDF text", () => {
+  const result = parseInvoiceText(
+    "购买方信息 名称：上海市建纬律师事务所 销售方信息 名称：大连祖君宏正黄旗餐饮有限公司 统一社会信用代码/纳税人识别号：31310000425013819A 统一社会信用代码/纳税人识别号：91210202MADFQLJ04K 项目名称 *生产生活服务*餐饮服务 价税合计（小写）770.00",
+    "26912000000461724376.pdf",
+  );
+
+  assert.equal(result.buyerName, "上海市建纬律师事务所");
+  assert.equal(result.sellerName, "大连祖君宏正黄旗餐饮有限公司");
+});
+
 test("reads a spaced railway ticket price from OCR text", () => {
   const result = parseInvoiceText(
     "发票号码：26469151444000199953 票 价： ￥ 68.00",

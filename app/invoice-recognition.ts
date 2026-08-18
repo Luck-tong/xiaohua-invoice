@@ -5,6 +5,13 @@ const PUBLIC_BASE_PATH = "/xiaohua-invoice";
 export type RecognitionResult = {
   number: string;
   amount: string;
+  buyerName: string;
+  buyerTaxId: string;
+  sellerName: string;
+  sellerTaxId: string;
+  itemName: string;
+  subtotal: string;
+  taxAmount: string;
   category: InvoiceCategory;
   method: "pdf-text" | "ocr";
 };
@@ -279,6 +286,70 @@ function invoiceTotalAmount(text: string) {
   return "";
 }
 
+function cleanPartyName(value: string) {
+  return value
+    .replace(/^(?:名称|名\s*称)[:：]?/g, "")
+    .replace(/(?:统一社会信用代码|纳税人识别号).*$/g, "")
+    .replace(/^[：:\s]+|[：:\s]+$/g, "")
+    .slice(0, 100);
+}
+
+function invoiceParties(text: string) {
+  const partyArea = text.split(/项目\s*名\s*称|货物或应税劳务/)[0] ?? text;
+  const taxIds = [...partyArea.matchAll(/(?<![0-9A-Z])[0-9A-Z]{15,20}(?![0-9A-Z])/gi)]
+    .map((match) => match[0].toUpperCase())
+    .filter((value) => value.length === 15 || value.length === 18);
+  const names = [...partyArea.matchAll(
+    /(?:名称|名\s*称)\s*[:：]\s*([^\n]{2,100}?)(?=\s+(?:购买方信息|销售方信息|统一社会信用代码(?:\s*\/\s*纳税人识别号)?|纳税人识别号|名称|名\s*称)\s*[:：]?|$)/gi,
+  )]
+    .map((match) => cleanPartyName(match[1]))
+    .filter(Boolean);
+
+  const buyerName = partyArea.match(
+    /购买方信息[\s\S]{0,40}?(?:名称|名\s*称)\s*[:：]\s*([\s\S]{2,100}?)(?=\s*(?:销售方信息|统一社会信用代码|纳税人识别号|项目\s*名\s*称))/i,
+  )?.[1];
+  const sellerName = partyArea.match(
+    /销售方信息[\s\S]{0,40}?(?:名称|名\s*称)\s*[:：]\s*([\s\S]{2,100}?)(?=\s*(?:购买方信息|统一社会信用代码|纳税人识别号|项目\s*名\s*称|$))/i,
+  )?.[1];
+
+  return {
+    buyerName: cleanPartyName(buyerName ?? names[0] ?? ""),
+    buyerTaxId: taxIds[0] ?? "",
+    sellerName: cleanPartyName(sellerName ?? names[1] ?? ""),
+    sellerTaxId: taxIds[1] ?? "",
+  };
+}
+
+function invoiceSubtotalAndTax(text: string, totalAmount: string) {
+  const total = Number(totalAmount);
+  if (!Number.isFinite(total) || total <= 0) {
+    return { subtotal: "", taxAmount: "" };
+  }
+
+  const compact = text.replace(/(?<=\d)\s+(?=\d)/g, "").replace(/\s+/g, "");
+  const totalIndex = Math.max(compact.lastIndexOf("价税合计"), compact.lastIndexOf("价税含计"));
+  const beforeTotal = compact.slice(Math.max(0, totalIndex - 260), Math.max(0, totalIndex));
+  const labelled = beforeTotal.match(
+    /合计[^0-9-]{0,30}(-?[0-9][\d,]*\.\d{1,2})[^0-9-]{0,30}(-?[0-9][\d,]*\.\d{1,2})[^0-9-]*$/,
+  );
+  const candidates = labelled
+    ? [labelled[1], labelled[2]].map((value) => Number(value.replace(/,/g, "")))
+    : [...beforeTotal.matchAll(/(?<![\d.])-?[0-9][\d,]*\.\d{1,2}(?!\d)/g)]
+      .map((match) => Number(match[0].replace(/,/g, "")))
+      .slice(-12);
+
+  for (let right = candidates.length - 1; right >= 1; right -= 1) {
+    for (let left = right - 1; left >= 0; left -= 1) {
+      const subtotal = candidates[left];
+      const taxAmount = candidates[right];
+      if (subtotal >= 0 && taxAmount >= 0 && closeAmount(subtotal + taxAmount, total)) {
+        return { subtotal: String(subtotal), taxAmount: String(taxAmount) };
+      }
+    }
+  }
+  return { subtotal: "", taxAmount: "" };
+}
+
 export function parseInvoiceText(text: string, filename = "") {
   const normalized = text
     .replace(/\u00a0/g, " ")
@@ -351,7 +422,16 @@ export function parseInvoiceText(text: string, filename = "") {
     }
   }
 
-  return { number, amount: amount || hints.amount };
+  const finalAmount = amount || hints.amount;
+  const parties = invoiceParties(normalized);
+  const totals = invoiceSubtotalAndTax(normalized, finalAmount);
+  return {
+    number,
+    amount: finalAmount,
+    ...parties,
+    itemName: extractInvoiceItemName(normalized),
+    ...totals,
+  };
 }
 
 async function getOcrWorker() {

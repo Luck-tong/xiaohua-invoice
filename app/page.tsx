@@ -28,6 +28,10 @@ import {
 } from "./invoice-readiness";
 import { createTaskQueue } from "./task-queue";
 import { adjacentPreviewId } from "./preview-keyboard";
+import {
+  buildInvoiceLedgerRows,
+  INVOICE_LEDGER_HEADERS,
+} from "./invoice-ledger";
 
 type FileStatus =
   | "queued"
@@ -43,6 +47,13 @@ type InvoiceFile = {
   file: File;
   number: string;
   amount: string;
+  buyerName?: string;
+  buyerTaxId?: string;
+  sellerName?: string;
+  sellerTaxId?: string;
+  itemName?: string;
+  subtotal?: string;
+  taxAmount?: string;
   category: InvoiceCategory;
   status: FileStatus;
   progress: number;
@@ -440,6 +451,13 @@ export default function Home() {
           updateItem(item.id, {
             number,
             amount,
+            buyerName: result.buyerName,
+            buyerTaxId: result.buyerTaxId,
+            sellerName: result.sellerName,
+            sellerTaxId: result.sellerTaxId,
+            itemName: result.itemName,
+            subtotal: result.subtotal,
+            taxAmount: result.taxAmount,
             category: result.category,
             method: result.method,
             progress: 100,
@@ -814,41 +832,49 @@ export default function Home() {
     setSaveNotice("");
     try {
       const XLSX = await import("xlsx");
-      const rows: Array<Record<string, string | number>> = ready.map((item, index) => ({
-        序号: index + 1,
-        发票分类: item.category,
-        发票号码: item.number,
-        发票金额: Number(item.amount),
-        原文件名: item.file.name,
-        新文件名: generatedName(item),
-        识别方式: item.method === "ocr" ? "OCR识别" : "PDF文字读取",
-        重复提醒: duplicateKeys.has(invoiceDuplicateKey(item))
-          ? "本批次号码重复"
-          : historyNumbers.has(item.number)
-            ? "历史记录中已处理"
-            : "",
-      }));
-      rows.push({
-        序号: "",
-        发票分类: "",
-        发票号码: "合计",
-        发票金额: Number(selectedAmountTotal),
-        原文件名: "",
-        新文件名: "",
-        识别方式: "",
-        重复提醒: "",
-      });
-      const sheet = XLSX.utils.json_to_sheet(rows);
+      const rows = buildInvoiceLedgerRows(ready.map((item) => ({
+        originalName: item.file.name,
+        currentName: generatedName(item),
+        number: item.number,
+        amount: item.amount,
+        buyerName: item.buyerName,
+        buyerTaxId: item.buyerTaxId,
+        sellerName: item.sellerName,
+        sellerTaxId: item.sellerTaxId,
+        itemName: item.itemName,
+        subtotal: item.subtotal,
+        taxAmount: item.taxAmount,
+      })));
+      const sheet = XLSX.utils.aoa_to_sheet([[...INVOICE_LEDGER_HEADERS], ...rows]);
       sheet["!cols"] = [
         { wch: 8 },
-        { wch: 14 },
+        { wch: 42 },
+        { wch: 42 },
         { wch: 24 },
         { wch: 14 },
-        { wch: 42 },
-        { wch: 36 },
-        { wch: 16 },
-        { wch: 22 },
+        { wch: 30 },
+        { wch: 24 },
+        { wch: 30 },
+        { wch: 24 },
+        { wch: 34 },
+        { wch: 14 },
+        { wch: 14 },
       ];
+      sheet["!autofilter"] = { ref: `A1:L${rows.length + 1}` };
+      sheet["!freeze"] = { xSplit: 0, ySplit: 1 };
+      for (let row = 2; row <= rows.length + 1; row += 1) {
+        for (const column of ["D", "G", "I"]) {
+          const cell = sheet[`${column}${row}`];
+          if (cell) {
+            cell.t = "s";
+            cell.z = "@";
+          }
+        }
+        for (const column of ["E", "K", "L"]) {
+          const cell = sheet[`${column}${row}`];
+          if (cell?.t === "n") cell.z = "¥#,##0.00";
+        }
+      }
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, sheet, "发票台账");
       const data = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
