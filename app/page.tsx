@@ -119,7 +119,10 @@ function incompleteReason(item: InvoiceFile) {
   if (item.status === "error") {
     return `处理失败：${item.errorMessage || "无法读取该文件"}`;
   }
-  if (item.category === "微信截图发票" && !item.amount) return "缺少交易金额";
+  if (
+    ["微信截图发票", "支付宝图片"].includes(item.category) &&
+    !item.amount
+  ) return "缺少交易金额";
   if (!item.number && !item.amount) return "缺少发票号码和金额";
   if (!item.number) return "缺少发票号码";
   if (!item.amount) return "缺少发票金额";

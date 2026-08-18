@@ -113,3 +113,14 @@ test("uses the paid amount rather than the original order amount in a WeChat scr
   );
   assert.equal(result.amount, "70613.5");
 });
+
+test("classifies an Alipay screenshot separately and uses the paid amount", () => {
+  const text = `账单详情 全部账单 尚优生鲜直供超市浦东三林店
+    -20.62 交易成功 订单金额 20.70 百次立减 -0.08
+    付款方式 花呗 收单机构 上海汇付支付有限公司`;
+  const filename = "c333d1a5cc36247a81b5826c44aa770f.jpg";
+  const result = parseInvoiceText(text, filename);
+
+  assert.equal(classifyInvoice(text, filename), "支付宝图片");
+  assert.equal(result.amount, "20.62");
+});

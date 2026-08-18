@@ -11,6 +11,7 @@ export type RecognitionResult = {
 
 export const INVOICE_CATEGORIES = [
   "微信截图发票",
+  "支付宝图片",
   "交通费",
   "餐饮费",
   "住宿费",
@@ -149,8 +150,22 @@ export function extractInvoiceItemName(text: string) {
   return category && name ? `${category}-${name}` : "";
 }
 
+function isAlipayScreenshot(text: string, filename = "") {
+  return /支付宝/i.test(filename) ||
+    /支付宝|花呗|收单机构|清算机构|全部账单|百次立减/.test(text);
+}
+
+function isWeChatScreenshot(text: string, filename = "") {
+  return /微信图片|微信截图/i.test(filename) ||
+    /微信支付/.test(text) ||
+    (/账单详情/.test(text) && !isAlipayScreenshot(text, filename));
+}
+
 export function classifyInvoice(text: string, filename = ""): InvoiceCategory {
-  if (/微信图片|微信截图/i.test(filename) || /账单详情|微信支付/.test(text)) {
+  if (isAlipayScreenshot(text, filename)) {
+    return "支付宝图片";
+  }
+  if (isWeChatScreenshot(text, filename)) {
     return "微信截图发票";
   }
 
@@ -225,7 +240,10 @@ export function parseInvoiceText(text: string, filename = "") {
 
   let amount = "";
 
-  if (/微信图片|微信截图/i.test(filename) || /账单详情|微信支付/.test(compact)) {
+  if (
+    isAlipayScreenshot(compact, filename) ||
+    isWeChatScreenshot(compact, filename)
+  ) {
     const paidAmount = compact.match(
       /(-?[\d,]+(?:\.\d{1,2})?)交易成功/,
     )?.[1];

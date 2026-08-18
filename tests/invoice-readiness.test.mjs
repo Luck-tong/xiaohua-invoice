@@ -26,3 +26,10 @@ test("still requires an amount for WeChat screenshots", () => {
     false,
   );
 });
+
+test("accepts an Alipay screenshot with an amount and no invoice number", () => {
+  const item = { number: "", amount: "20.62", category: "支付宝图片" };
+
+  assert.equal(isDownloadableInvoice(item), true);
+  assert.equal(invoiceNamePrefix(item), "支付宝图片");
+});
