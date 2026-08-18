@@ -226,11 +226,13 @@ function closeAmount(left: number, right: number) {
 function verifiedSumAmount(text: string) {
   const values = [...text.matchAll(
     /(?<![\d.])-?[0-9][\d,]*\.\d{1,2}(?!\d)/g,
-  )].map((match) => Math.abs(Number(match[0].replace(/,/g, ""))))
-    .filter((value) => Number.isFinite(value) && value <= 999_999_999_999);
+  )].map((match) => Number(match[0].replace(/,/g, "")))
+    .filter((value) =>
+      Number.isFinite(value) && Math.abs(value) <= 999_999_999_999
+    );
 
   const verifiedTotals = values.filter((target, targetIndex) =>
-    values.some((left, leftIndex) =>
+    target > 0 && values.some((left, leftIndex) =>
       leftIndex !== targetIndex && values.some((right, rightIndex) =>
         rightIndex !== targetIndex &&
         rightIndex !== leftIndex &&

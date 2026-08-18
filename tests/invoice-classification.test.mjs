@@ -118,6 +118,17 @@ test("keeps the verified total instead of the trailing tax in reversed token ord
   assert.equal(result.amount, "99");
 });
 
+test("preserves negative adjustments when verifying the final invoice total", () => {
+  const result = parseInvoiceText(
+    `发票号码：26332000004765395271 项目名称 税率 税额
+    客运服务费 23.35 0.70 客运服务费 -2.91 -0.09
+    合计 20.44 0.61 价税合计（大写）贰拾壹圆零伍分（小写）21.05`,
+    "26332000004765395271.pdf",
+  );
+
+  assert.equal(result.amount, "21.05");
+});
+
 test("rejects a tax identifier mistaken for an amount and reads the small total", () => {
   const result = parseInvoiceText(
     "统一社会信用代码 31310000425013819A 价税合计 ¥31310000425013819 （小写）28.97",
