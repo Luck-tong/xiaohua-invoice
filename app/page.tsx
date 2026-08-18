@@ -224,6 +224,11 @@ export default function Home() {
     [invoiceFiles],
   );
 
+  const incompleteFiles = useMemo(
+    () => invoiceFiles.filter((item) => !item.number || !item.amount),
+    [invoiceFiles],
+  );
+
   const selectedReadyFiles = useMemo(
     () => downloadableFiles.filter((item) => selectedIds.has(item.id)),
     [downloadableFiles, selectedIds],
@@ -267,6 +272,10 @@ export default function Home() {
         items: invoiceFiles.filter((item) => item.number === number),
       })),
     [duplicateNumbers, invoiceFiles],
+  );
+  const duplicateFileCount = useMemo(
+    () => duplicateGroups.reduce((total, group) => total + group.items.length, 0),
+    [duplicateGroups],
   );
 
   const historyNumbers = useMemo(() => {
@@ -1103,6 +1112,19 @@ export default function Home() {
               ><span>已识别 · 点击查看</span><strong>{downloadableFiles.length}</strong></button>
               <button
                 type="button"
+                className={incompleteFiles.length ? "incomplete-stat" : ""}
+                disabled={incompleteFiles.length === 0}
+                onClick={() =>
+                  setPreviewDialog({
+                    title: "查看未完成发票",
+                    items: incompleteFiles,
+                    mode: "single",
+                    activeId: incompleteFiles[0]?.id,
+                  })
+                }
+              ><span>未完成 · 点击查看</span><strong>{incompleteFiles.length}</strong></button>
+              <button
+                type="button"
                 disabled={selectedReadyFiles.length === 0}
                 onClick={() =>
                   setPreviewDialog({
@@ -1127,7 +1149,9 @@ export default function Home() {
                   })
                 }
               >
-                <span>重复号码 · 点击对比</span><strong>{duplicateNumbers.size}</strong>
+                <span>重复组数 · 已含在识别数中</span>
+                <strong>{duplicateNumbers.size} 组</strong>
+                <small>涉及 {duplicateFileCount} 份 · 点击对比</small>
               </button>
             </div>
             {groupedInvoiceFiles.length > 0 && (

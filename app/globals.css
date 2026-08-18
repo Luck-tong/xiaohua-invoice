@@ -1951,6 +1951,22 @@ body {
   font-size: 18px;
 }
 
+.batch-stats small {
+  display: block;
+  margin-top: 5px;
+  color: #8b6b42;
+  font-size: 8px;
+}
+
+.batch-stats .incomplete-stat {
+  border-color: #ead7b9;
+  background: #fffbf2;
+}
+
+.batch-stats .incomplete-stat strong {
+  color: #a76c22;
+}
+
 .batch-stats .amount-stat {
   grid-column: 1 / -1;
   background: linear-gradient(110deg, #edf2ff, #effbfc);
