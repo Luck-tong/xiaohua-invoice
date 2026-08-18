@@ -21,7 +21,7 @@ test("prioritizes the invoice item name over company-name keywords", () => {
   assert.equal(extractInvoiceItemName(text), "生产生活服务-技术服务费");
   assert.equal(
     classifyInvoice(text, "普通发票.pdf"),
-    "生产生活服务-技术服务费",
+    "技术服务费",
   );
 });
 
@@ -29,12 +29,22 @@ test("falls back to the full invoice text when no item header is available", () 
   assert.equal(classifyInvoice("上海云庭酒店 客房服务", "普通发票.pdf"), "住宿费");
 });
 
-test("keeps the full standardized platform-service item name", () => {
+test("groups different dining item names into one broad category", () => {
+  const items = ["餐饮服务", "餐费", "餐饮费", "食品"];
+  for (const item of items) {
+    assert.equal(
+      classifyInvoice(`项目名称 *生产生活服务*${item} 1 100.00 合计 100.00`, "普通发票.pdf"),
+      "餐饮费",
+    );
+  }
+});
+
+test("groups a standardized platform-service item into platform service", () => {
   const text = `项目名称 规格型号 单位 数量 单价 金额
     *生产生活服务*平台服务费 1 200.00 200.00 合计 200.00`;
   assert.equal(
     classifyInvoice(text, "普通发票.pdf"),
-    "生产生活服务-平台服务费",
+    "平台服务费",
   );
 });
 
@@ -43,18 +53,18 @@ test("excludes a standalone specification value from the item name", () => {
     *生产生活服务*餐饮费 无 1 205.66 205.66 合计 218.00`;
   assert.equal(
     classifyInvoice(text, "普通发票.pdf"),
-    "生产生活服务-餐饮费",
+    "餐饮费",
   );
 });
 
-test("keeps the exact platform usage item name from the full invoice text", () => {
+test("groups platform usage into platform service", () => {
   const text = `电子发票（普通发票）
     购买方名称：上海市建纬律师事务所
     *生产生活服务*平台使用费
     价税合计（小写）¥800.00`;
   assert.equal(
     classifyInvoice(text, "26442000007749106261.pdf"),
-    "生产生活服务-平台使用费",
+    "平台服务费",
   );
 });
 
@@ -262,7 +272,7 @@ test("uses invoice content before a WeChat image filename", () => {
 
   assert.equal(
     classifyInvoice(text, "微信图片_20260807125237_790_15.pdf"),
-    "生产生活服务-餐饮服务",
+    "餐饮费",
   );
 });
 

@@ -61,7 +61,7 @@ const CATEGORY_RULES: Array<{
   },
   {
     category: "平台服务费",
-    keywords: ["平台服务费", "平台服务"],
+    keywords: ["平台服务费", "平台服务", "平台使用费", "平台使用"],
   },
   {
     category: "技术服务费",
@@ -171,7 +171,7 @@ function isWeChatScreenshot(text: string, filename = "") {
 export function classifyInvoice(text: string, filename = ""): InvoiceCategory {
   const compactText = text.replace(/\s+/g, "");
   const fullItemName = extractInvoiceItemName(text);
-  if (fullItemName) return fullItemName;
+  if (fullItemName) return matchCategory(fullItemName) ?? "其他";
 
   if (isAlipayScreenshot(text, filename)) {
     return "支付宝图片";
