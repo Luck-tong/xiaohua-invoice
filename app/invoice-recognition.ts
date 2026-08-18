@@ -265,6 +265,13 @@ export function parseInvoiceText(text: string, filename = "") {
   }
 
   if (!amount) {
+    const directSmallTotal = compact.match(
+      /小写[）)》]?[:：]?[¥￥]?([0-9][\d,]*(?:\.\d{1,2})?)/,
+    )?.[1];
+    if (directSmallTotal) amount = cleanAmount(directSmallTotal);
+  }
+
+  if (!amount) {
     const totalStart = compact.indexOf("价税合计");
     if (totalStart >= 0) {
       const totalArea = compact.slice(totalStart, totalStart + 600);

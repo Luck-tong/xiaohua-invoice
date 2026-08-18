@@ -82,6 +82,15 @@ test("uses the final currency amount in a fragmented invoice total area", () => 
   assert.equal(result.amount, "217.3");
 });
 
+test("prefers the explicit small total over a trailing tax amount", () => {
+  const result = parseInvoiceText(
+    "价税合计（大写）壹佰陆拾陆圆陆角（小写）¥166.60 合计金额¥164.95 税额¥1.65",
+    "26432000001375360096.pdf",
+  );
+
+  assert.equal(result.amount, "166.6");
+});
+
 test("rejects a tax identifier mistaken for an amount and reads the small total", () => {
   const result = parseInvoiceText(
     "统一社会信用代码 31310000425013819A 价税合计 ¥31310000425013819 （小写）28.97",
