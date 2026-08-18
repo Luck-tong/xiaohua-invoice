@@ -82,6 +82,15 @@ test("uses the final currency amount in a fragmented invoice total area", () => 
   assert.equal(result.amount, "217.3");
 });
 
+test("rejects a tax identifier mistaken for an amount and reads the small total", () => {
+  const result = parseInvoiceText(
+    "统一社会信用代码 31310000425013819A 价税合计 ¥31310000425013819 （小写）28.97",
+    "26317000002869884573.pdf",
+  );
+
+  assert.equal(result.amount, "28.97");
+});
+
 test("reads an OCR total when the currency symbol is mistaken for a Chinese character", () => {
   const result = parseInvoiceText(
     "发 票 号 码 : 26312000004897976641 价 税 合计 《大 写 ) 贰佰壹拾捌圆整 (小 写 ) 对 218. 00",

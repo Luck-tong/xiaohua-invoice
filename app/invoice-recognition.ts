@@ -188,7 +188,7 @@ let activeOcrProgress: ProgressCallback | null = null;
 
 function cleanAmount(value: string) {
   const parsed = Number.parseFloat(value.replace(/,/g, "").replace("，", "."));
-  if (!Number.isFinite(parsed)) return "";
+  if (!Number.isFinite(parsed) || Math.abs(parsed) > 999_999_999_999) return "";
   return String(parsed);
 }
 
