@@ -865,11 +865,7 @@ export default function Home() {
 
       <section className="hero" id="tool">
         <h1 className="hero-wordmark">Flower</h1>
-        <p>
-          读取发票号码与价税合计，一次完成多份文件整理。
-          <br />
-          不用逐张打开，也不用复制粘贴。
-        </p>
+        <p>读取发票号码与价税合计，一次完成多份文件整理 · 不用逐张打开，也不用复制粘贴</p>
 
         <div
           className={`upload-panel ${files.length ? "has-files" : ""} ${

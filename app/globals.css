@@ -1877,7 +1877,11 @@ body {
 }
 
 .hero > p {
-  font-size: 13px;
+  max-width: 680px;
+  color: #66728c;
+  font-size: 14px;
+  line-height: 1.65;
+  letter-spacing: 0.015em;
 }
 
 .upload-panel {
