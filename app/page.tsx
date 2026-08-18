@@ -249,10 +249,7 @@ export default function Home() {
     [invoiceFiles],
   );
 
-  const errorFiles = useMemo(
-    () => invoiceFiles.filter((item) => item.status === "error"),
-    [invoiceFiles],
-  );
+  const errorFiles = incompleteFiles;
 
   const selectedReadyFiles = useMemo(
     () => downloadableFiles.filter((item) => selectedIds.has(item.id)),
@@ -1222,7 +1219,7 @@ export default function Home() {
                 disabled={errorFiles.length === 0}
                 onClick={() =>
                   setPreviewDialog({
-                    title: "处理错误发票",
+                    title: "查看错误与未完成发票",
                     items: errorFiles,
                     mode: "single",
                     activeId: errorFiles[0]?.id,
