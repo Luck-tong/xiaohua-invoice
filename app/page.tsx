@@ -806,14 +806,16 @@ export default function Home() {
     }
   }
 
-  const previewCategories = previewDialog?.mode === "single" &&
-    previewDialog.showGeneratedNames
+  const showPreviewSelectors = Boolean(
+    previewDialog?.showGeneratedNames &&
+    (previewDialog.mode === "single" || previewDialog.mode === "amounts"),
+  );
+  const previewCategories = showPreviewSelectors && previewDialog
     ? [...new Set(previewDialog.items.map(completedInvoiceFilterCategory))].sort(
         (left, right) => left.localeCompare(right, "zh-CN"),
       )
     : [];
-  const filteredPreviewItems = previewDialog?.mode === "single" &&
-    previewDialog.categoryFilter
+  const filteredPreviewItems = showPreviewSelectors && previewDialog?.categoryFilter
     ? previewDialog.items.filter(
         (item) => completedInvoiceFilterCategory(item) === previewDialog.categoryFilter,
       )
@@ -830,7 +832,7 @@ export default function Home() {
       )
     : [];
   const amountPreviewSummary = summarizeInvoiceAmounts(
-    previewDialog?.mode === "amounts" ? previewDialog.items : [],
+    previewDialog?.mode === "amounts" ? filteredPreviewItems : [],
   );
 
   return (
@@ -1497,35 +1499,55 @@ export default function Home() {
                 <span>原票核对</span>
                 <h2 id="invoice-preview-title">{previewDialog.title}</h2>
               </div>
-              {previewCategories.length > 0 && (
-                <label className="invoice-preview-filter">
-                  <span>分类筛选</span>
-                  <select
-                    value={previewDialog.categoryFilter ?? ""}
-                    onChange={(event) => {
-                      const categoryFilter = event.target.value;
-                      const firstItem = categoryFilter
-                        ? previewDialog.items.find(
-                            (item) => completedInvoiceFilterCategory(item) === categoryFilter,
-                          )
-                        : previewDialog.items[0];
-                      setPreviewDialog((current) => current ? {
-                        ...current,
-                        categoryFilter,
-                        activeId: firstItem?.id,
-                      } : current);
-                    }}
-                  >
-                    <option value="">全部分类（{previewDialog.items.length}）</option>
-                    {previewCategories.map((category) => (
-                      <option value={category} key={category}>
-                        {category}（{previewDialog.items.filter(
-                          (item) => completedInvoiceFilterCategory(item) === category,
-                        ).length}）
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              {showPreviewSelectors && (
+                <div className="invoice-preview-filters">
+                  <label className="invoice-preview-filter">
+                    <span>分类</span>
+                    <select
+                      value={previewDialog.categoryFilter ?? ""}
+                      onChange={(event) => {
+                        const categoryFilter = event.target.value;
+                        const firstItem = categoryFilter
+                          ? previewDialog.items.find(
+                              (item) => completedInvoiceFilterCategory(item) === categoryFilter,
+                            )
+                          : previewDialog.items[0];
+                        setPreviewDialog((current) => current ? {
+                          ...current,
+                          categoryFilter,
+                          activeId: firstItem?.id,
+                        } : current);
+                      }}
+                    >
+                      <option value="">全部分类（{previewDialog.items.length}）</option>
+                      {previewCategories.map((category) => (
+                        <option value={category} key={category}>
+                          {category}（{previewDialog.items.filter(
+                            (item) => completedInvoiceFilterCategory(item) === category,
+                          ).length}）
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="invoice-preview-filter invoice-preview-file-filter">
+                    <span>发票号码或图片金额</span>
+                    <select
+                      value={activePreviewItem?.id ?? ""}
+                      onChange={(event) =>
+                        setPreviewDialog((current) => current ? {
+                          ...current,
+                          activeId: event.target.value,
+                        } : current)
+                      }
+                    >
+                      {filteredPreviewItems.map((item) => (
+                        <option value={item.id} key={item.id}>
+                          {generatedName(item)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
               )}
               <button
                 type="button"
