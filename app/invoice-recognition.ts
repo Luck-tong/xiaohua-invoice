@@ -12,6 +12,7 @@ export type RecognitionResult = {
   itemName: string;
   subtotal: string;
   taxAmount: string;
+  invoiceDate: string;
   category: InvoiceCategory;
   method: "pdf-text" | "ocr";
 };
@@ -456,6 +457,12 @@ export function parseInvoiceText(text: string, filename = "") {
   }
 
   const finalAmount = amount || hints.amount;
+  const dateMatch = normalized.match(
+    /(?:开票日期|日期)\s*[:：]?\s*(\d{4})\s*[年\-/]\s*(\d{1,2})\s*[月\-/]\s*(\d{1,2})\s*日?/,
+  );
+  const invoiceDate = dateMatch
+    ? `${dateMatch[1]}-${dateMatch[2].padStart(2, "0")}-${dateMatch[3].padStart(2, "0")}`
+    : "";
   const parties = invoiceParties(normalized);
   const totals = invoiceSubtotalAndTax(normalized, finalAmount);
   return {
@@ -463,6 +470,7 @@ export function parseInvoiceText(text: string, filename = "") {
     amount: finalAmount,
     ...parties,
     itemName: extractInvoiceItemName(normalized),
+    invoiceDate,
     ...totals,
   };
 }
@@ -584,7 +592,7 @@ function mimeForName(name: string) {
 
 export async function unpackInvoiceZip(file: File) {
   const { default: JSZip } = await import("jszip");
-  const zip = await JSZip.loadAsync(file);
+  const zip = await JSZip.loadAsync(await file.arrayBuffer());
   const entries = Object.values(zip.files).filter(
     (entry) =>
       !entry.dir && /\.(pdf|png|jpe?g|webp)$/i.test(entry.name),

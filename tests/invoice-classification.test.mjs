@@ -90,9 +90,17 @@ test("extracts the ledger parties, first item, subtotal, tax, and tax-inclusive 
     sellerName: "大连祖君宏正黄旗餐饮有限公司",
     sellerTaxId: "91210202MADFQLJ04K",
     itemName: "生产生活服务-餐饮服务",
+    invoiceDate: "",
     subtotal: "726.42",
     taxAmount: "43.58",
   });
+});
+
+test("extracts a normalized invoice date for archive searching", () => {
+  const result = parseInvoiceText(
+    "电子发票 发票号码：26912000000461724376 开票日期：2026年08月16日 价税合计（小写）¥770.00",
+  );
+  assert.equal(result.invoiceDate, "2026-08-16");
 });
 
 test("leaves subtotal and tax blank when they cannot be verified against the invoice total", () => {

@@ -36,6 +36,23 @@ import {
 } from "./invoice-ledger";
 import type { InvoiceLedgerFieldKey, InvoiceLedgerInput } from "./invoice-ledger";
 import { styleInvoiceLedgerXlsx } from "./invoice-ledger-style";
+import { mergeInvoicePdfBytes } from "./pdf-layout";
+import type { PdfInvoicesPerPage } from "./pdf-layout";
+import {
+  buyerValidationIssues,
+  EMPTY_BUYER_PROFILE,
+  validBuyerTaxId,
+} from "./buyer-validation";
+import type { BuyerProfile } from "./buyer-validation";
+import {
+  clearArchiveRecords,
+  deleteArchiveRecord,
+  filterArchiveRecords,
+  importArchiveRecords,
+  loadArchiveRecords,
+  upsertArchiveRecords,
+} from "./archive-records";
+import type { InvoiceArchiveRecord } from "./archive-records";
 
 type FileStatus =
   | "queued"
@@ -58,6 +75,8 @@ type InvoiceFile = {
   itemName?: string;
   subtotal?: string;
   taxAmount?: string;
+  invoiceDate?: string;
+  importedAt: string;
   category: InvoiceCategory;
   status: FileStatus;
   progress: number;
@@ -85,6 +104,7 @@ type PreviewDialog = {
 };
 
 const HISTORY_KEY = "piaoli-download-history";
+const BUYER_PROFILE_KEY = "flower-buyer-profile";
 
 declare global {
   interface Window {
@@ -260,6 +280,20 @@ export default function Home() {
   const [saveNotice, setSaveNotice] = useState("");
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [excelDialogOpen, setExcelDialogOpen] = useState(false);
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [mergePerPage, setMergePerPage] = useState<PdfInvoicesPerPage>(1);
+  const [buyerProfile, setBuyerProfile] = useState<BuyerProfile>(EMPTY_BUYER_PROFILE);
+  const [buyerProfileDraft, setBuyerProfileDraft] = useState<BuyerProfile>(EMPTY_BUYER_PROFILE);
+  const [buyerProfileOpen, setBuyerProfileOpen] = useState(false);
+  const [archiveRecords, setArchiveRecords] = useState<InvoiceArchiveRecord[]>([]);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archiveQuery, setArchiveQuery] = useState("");
+  const [archiveDateField, setArchiveDateField] = useState<"invoiceDate" | "importedAt">("invoiceDate");
+  const [archiveFrom, setArchiveFrom] = useState("");
+  const [archiveTo, setArchiveTo] = useState("");
+  const [batchQuery, setBatchQuery] = useState("");
+  const [batchFrom, setBatchFrom] = useState("");
+  const [batchTo, setBatchTo] = useState("");
   const [excelFields, setExcelFields] = useState<Set<InvoiceLedgerFieldKey>>(
     () => new Set(INVOICE_LEDGER_FIELDS.map((field) => field.key)),
   );
@@ -275,12 +309,29 @@ export default function Home() {
   );
   const [previewDialog, setPreviewDialog] = useState<PreviewDialog | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  const archiveImportRef = useRef<HTMLInputElement>(null);
   const processingQueueRef = useRef(createTaskQueue(3));
 
   const invoiceFiles = useMemo(
     () => files.filter((item) => !isZipFile(item.file)),
     [files],
   );
+
+  const visibleInvoiceFiles = useMemo(() => {
+    const query = batchQuery.trim().toLocaleLowerCase("zh-CN");
+    return invoiceFiles.filter((item) => {
+      const searchable = [
+        item.file.name, item.source, item.number, item.amount, item.buyerName,
+        item.buyerTaxId, item.sellerName, item.sellerTaxId, item.itemName,
+        item.category, item.invoiceDate,
+      ].join(" ").toLocaleLowerCase("zh-CN");
+      if (query && !searchable.includes(query)) return false;
+      if (batchFrom && (!item.invoiceDate || item.invoiceDate < batchFrom)) return false;
+      if (batchTo && (!item.invoiceDate || item.invoiceDate > batchTo)) return false;
+      return true;
+    });
+  }, [batchFrom, batchQuery, batchTo, invoiceFiles]);
 
   const downloadableFiles = useMemo(
     () => invoiceFiles.filter(isDownloadableInvoice),
@@ -292,7 +343,7 @@ export default function Home() {
     [invoiceFiles],
   );
 
-  const errorFiles = incompleteFiles;
+  const incompleteErrorFiles = incompleteFiles;
 
   const selectedReadyFiles = useMemo(
     () => downloadableFiles.filter((item) => selectedIds.has(item.id)),
@@ -307,7 +358,7 @@ export default function Home() {
   const groupedInvoiceFiles = useMemo(
     () => {
       const groups = new Map<InvoiceCategory, InvoiceFile[]>();
-      invoiceFiles.forEach((item) => {
+      visibleInvoiceFiles.forEach((item) => {
         groups.set(item.category, [...(groups.get(item.category) ?? []), item]);
       });
       return [...groups].map(([category, groupFiles]) => ({
@@ -315,7 +366,7 @@ export default function Home() {
         files: groupFiles,
       }));
     },
-    [invoiceFiles],
+    [visibleInvoiceFiles],
   );
 
   const duplicateKeys = useMemo(() => {
@@ -372,6 +423,66 @@ export default function Home() {
     return generatedNames.get(item.id) || renamedFile(item);
   }
 
+  function itemQualityIssues(item: InvoiceFile) {
+    const issues = buyerValidationIssues(item, buyerProfile);
+    if (!isDownloadableInvoice(item)) issues.unshift(incompleteReason(item));
+    if (invoiceDuplicateKey(item) && duplicateKeys.has(invoiceDuplicateKey(item))) {
+      issues.push("发票号码和金额与当前批次其他发票重复");
+    }
+    const looksAlreadyRenamed = /^(?:\d{8,20}|微信截图发票|支付宝图片)\s*[（(]\d+(?:\.\d{1,2})?[）)](?:\s*[（(]\d+[）)])?\.(?:pdf|jpe?g|png|webp)$/i.test(item.file.name);
+    if (isDownloadableInvoice(item) && looksAlreadyRenamed && item.file.name !== generatedName(item)) {
+      issues.push("原文件名不符合“发票号码（金额）”规则");
+    }
+    return [...new Set(issues)];
+  }
+
+  // “错误组数”只统计未识别完成的文件，避免与已识别数量重复。
+  // 购买方、重复和命名核对问题仍会显示在结果卡片与历史档案中。
+  const errorFiles = incompleteErrorFiles;
+
+  const filteredArchiveRecords = useMemo(
+    () => filterArchiveRecords(archiveRecords, {
+      query: archiveQuery,
+      dateField: archiveDateField,
+      from: archiveFrom,
+      to: archiveTo,
+    }),
+    [archiveDateField, archiveFrom, archiveQuery, archiveRecords, archiveTo],
+  );
+
+  useEffect(() => {
+    const terminalItems = invoiceFiles.filter((item) =>
+      ["ready", "review", "error"].includes(item.status),
+    );
+    if (terminalItems.length === 0) return;
+    const timer = window.setTimeout(() => {
+      const records = terminalItems.map((item): InvoiceArchiveRecord => ({
+        id: [item.source, item.file.name, item.file.size, item.file.lastModified].join("::"),
+        importedAt: item.importedAt,
+        invoiceDate: item.invoiceDate,
+        originalName: item.file.name,
+        generatedName: generatedName(item),
+        source: item.source || "直接添加",
+        number: item.number,
+        amount: item.amount,
+        buyerName: item.buyerName,
+        buyerTaxId: item.buyerTaxId,
+        sellerName: item.sellerName,
+        sellerTaxId: item.sellerTaxId,
+        itemName: item.itemName,
+        category: item.category,
+        status: item.status,
+        issues: itemQualityIssues(item),
+      }));
+      void upsertArchiveRecords(records)
+        .then(loadArchiveRecords)
+        .then(setArchiveRecords)
+        .catch(() => undefined);
+    }, 500);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buyerProfile, duplicateKeys, generatedNames, invoiceFiles]);
+
   const historyNumbers = useMemo(() => {
     const numbers = new Set<string>();
     history.forEach((entry) =>
@@ -406,6 +517,20 @@ export default function Home() {
     }
   }, []);
 
+  useEffect(() => {
+    try {
+      const savedProfile = window.localStorage.getItem(BUYER_PROFILE_KEY);
+      if (savedProfile) {
+        const profile = JSON.parse(savedProfile) as BuyerProfile;
+        setBuyerProfile(profile);
+        setBuyerProfileDraft(profile);
+      }
+    } catch {
+      setBuyerProfile(EMPTY_BUYER_PROFILE);
+    }
+    void loadArchiveRecords().then(setArchiveRecords).catch(() => setArchiveRecords([]));
+  }, []);
+
   function saveHistory(entries: HistoryEntry[]) {
     setHistory(entries);
     try {
@@ -419,6 +544,50 @@ export default function Home() {
     if (!window.confirm("确定清空当前浏览器中的全部处理日志吗？")) return;
     setHistory([]);
     window.localStorage.removeItem(HISTORY_KEY);
+  }
+
+  async function removeArchiveRecord(id: string) {
+    await deleteArchiveRecord(id);
+    setArchiveRecords((current) => current.filter((record) => record.id !== id));
+  }
+
+  async function clearArchive() {
+    if (!window.confirm("确定删除当前浏览器保存的全部发票档案吗？此操作不可恢复。")) return;
+    await clearArchiveRecords();
+    setArchiveRecords([]);
+  }
+
+  function exportArchiveBackup() {
+    downloadBlob(
+      new Blob([JSON.stringify(archiveRecords, null, 2)], { type: "application/json" }),
+      `花签发票档案备份（${new Date().toISOString().slice(0, 10)}）.json`,
+    );
+  }
+
+  async function handleArchiveImport(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const records = JSON.parse(await file.text()) as InvoiceArchiveRecord[];
+      if (!Array.isArray(records)) throw new Error("invalid archive");
+      await importArchiveRecords(records);
+      setArchiveRecords(await loadArchiveRecords());
+      setSaveNotice(`已导入 ${records.length} 条本地档案记录。`);
+    } catch {
+      setSaveNotice("档案备份导入失败，请选择由花签导出的 JSON 文件。");
+    }
+  }
+
+  function saveBuyerProfile(profile: BuyerProfile) {
+    const normalized = {
+      name: profile.name.trim(),
+      taxId: profile.taxId.replace(/\s+/g, "").toUpperCase(),
+    };
+    setBuyerProfile(normalized);
+    setBuyerProfileDraft(normalized);
+    window.localStorage.setItem(BUYER_PROFILE_KEY, JSON.stringify(normalized));
+    setBuyerProfileOpen(false);
   }
 
   function updateItem(id: string, patch: Partial<InvoiceFile>) {
@@ -436,6 +605,7 @@ export default function Home() {
       status: "queued",
       progress: 0,
       source,
+      importedAt: new Date().toISOString(),
     };
   }
 
@@ -466,6 +636,7 @@ export default function Home() {
             itemName: result.itemName,
             subtotal: result.subtotal,
             taxAmount: result.taxAmount,
+            invoiceDate: result.invoiceDate,
             category: result.category,
             method: result.method,
             progress: 100,
@@ -524,11 +695,11 @@ export default function Home() {
       });
   }
 
-  function addFiles(list: FileList | File[]) {
-    const accepted = Array.from(list).filter((file) =>
+  function addFileEntries(entries: Array<{ file: File; source?: string }>) {
+    const accepted = entries.filter(({ file }) =>
       /(\.pdf|\.png|\.jpe?g|\.webp|\.zip)$/i.test(file.name),
     );
-    const items = accepted.map((file) => createItem(file));
+    const items = accepted.map(({ file, source }) => createItem(file, source));
 
     setFiles((current) => [...current, ...items]);
     setSelectedIds((current) => {
@@ -544,15 +715,55 @@ export default function Home() {
     });
   }
 
+  function addFiles(list: FileList | File[]) {
+    addFileEntries(Array.from(list).map((file) => {
+      const relativePath = (file as File & { webkitRelativePath?: string }).webkitRelativePath;
+      const source = relativePath
+        ? relativePath.split("/").slice(0, -1).join(" › ")
+        : undefined;
+      return { file, source };
+    }));
+  }
+
   function handleInput(event: ChangeEvent<HTMLInputElement>) {
     if (event.target.files) addFiles(event.target.files);
     event.target.value = "";
   }
 
-  function handleDrop(event: DragEvent<HTMLDivElement>) {
+  async function handleDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setDragging(false);
-    addFiles(event.dataTransfer.files);
+    type DroppedEntry = {
+      isFile: boolean;
+      isDirectory: boolean;
+      name: string;
+      file: (callback: (file: File) => void) => void;
+      createReader: () => { readEntries: (callback: (entries: DroppedEntry[]) => void) => void };
+    };
+    const readEntry = async (entry: DroppedEntry, path = ""): Promise<Array<{ file: File; source?: string }>> => {
+      if (entry.isFile) {
+        const file = await new Promise<File>((resolve) => entry.file(resolve));
+        return [{ file, source: path || undefined }];
+      }
+      if (!entry.isDirectory) return [];
+      const reader = entry.createReader();
+      const children: DroppedEntry[] = [];
+      while (true) {
+        const batch = await new Promise<DroppedEntry[]>((resolve) => reader.readEntries(resolve));
+        if (batch.length === 0) break;
+        children.push(...batch);
+      }
+      const nextPath = path ? `${path} › ${entry.name}` : entry.name;
+      return (await Promise.all(children.map((child) => readEntry(child, nextPath)))).flat();
+    };
+    const entries = Array.from(event.dataTransfer.items)
+      .map((item) => item.webkitGetAsEntry?.() as unknown as DroppedEntry | null)
+      .filter(Boolean) as DroppedEntry[];
+    if (entries.length > 0) {
+      addFileEntries((await Promise.all(entries.map((entry) => readEntry(entry)))).flat());
+    } else {
+      addFiles(event.dataTransfer.files);
+    }
   }
 
   function updateFile(id: string, field: "number" | "amount", value: string) {
@@ -923,7 +1134,7 @@ export default function Home() {
     }
   }
 
-  async function mergeSelectedPdfs() {
+  async function mergeSelectedPdfs(perPage: PdfInvoicesPerPage) {
     const ready = selectedPdfFiles;
     if (ready.length < 2) {
       setSaveNotice("请至少勾选 2 份 PDF 发票再合并。");
@@ -933,17 +1144,13 @@ export default function Home() {
     setBusyAction("merge");
     setSaveNotice("");
     try {
-      const { PDFDocument } = await import("pdf-lib");
-      const merged = await PDFDocument.create();
-      for (const item of ready) {
-        const source = await PDFDocument.load(await item.file.arrayBuffer());
-        const pages = await merged.copyPages(source, source.getPageIndices());
-        pages.forEach((page) => merged.addPage(page));
-      }
-      const bytes = await merged.save();
+      const bytes = await mergeInvoicePdfBytes(
+        await Promise.all(ready.map((item) => item.file.arrayBuffer())),
+        perPage,
+      );
       downloadBlob(
         new Blob([new Uint8Array(bytes)], { type: "application/pdf" }),
-        `合并发票（${ready.length}份）.pdf`,
+        `合并发票（每页${perPage}张·${ready.length}份）.pdf`,
       );
 
       const entry: HistoryEntry = {
@@ -954,7 +1161,8 @@ export default function Home() {
         action: "merge",
       };
       saveHistory([entry, ...history]);
-      setSaveNotice(`已按当前顺序合并 ${ready.length} 份 PDF。`);
+      setMergeDialogOpen(false);
+      setSaveNotice(`已按每页 ${perPage} 张合并 ${ready.length} 份 PDF。`);
     } catch {
       setSaveNotice("PDF 合并失败，请确认文件未加密或损坏。");
     } finally {
@@ -1093,6 +1301,13 @@ export default function Home() {
             accept=".pdf,.jpg,.jpeg,.png,.webp,.zip"
             onChange={handleInput}
           />
+          <input
+            ref={folderInputRef}
+            type="file"
+            multiple
+            {...{ webkitdirectory: "", directory: "" }}
+            onChange={handleInput}
+          />
           {files.length === 0 ? (
             <>
               <div className="upload-symbol" aria-hidden="true">
@@ -1101,12 +1316,20 @@ export default function Home() {
               </div>
               <h2>拖放发票到这里</h2>
               <p>可同时选择多份PDF、图片或ZIP压缩包</p>
-              <button
-                className="select-button"
-                onClick={() => inputRef.current?.click()}
-              >
-                选择发票文件
-              </button>
+              <div className="upload-select-actions">
+                <button
+                  className="select-button"
+                  onClick={() => inputRef.current?.click()}
+                >
+                  选择发票文件
+                </button>
+                <button
+                  className="folder-select-button"
+                  onClick={() => folderInputRef.current?.click()}
+                >
+                  选择发票文件夹
+                </button>
+              </div>
               <div className="upload-meta">
                 <span>支持 PDF、JPG、PNG、WEBP、ZIP</span>
                 <span className="meta-divider" />
@@ -1122,6 +1345,7 @@ export default function Home() {
                 </div>
                 <div className="queue-actions">
                   <button onClick={() => inputRef.current?.click()}>＋ 继续添加</button>
+                  <button onClick={() => folderInputRef.current?.click()}>＋ 添加文件夹</button>
                   <button onClick={clearFiles}>清空</button>
                 </div>
               </div>
@@ -1195,6 +1419,34 @@ export default function Home() {
             </div>
           </div>
 
+          <div className="invoice-search-bar" aria-label="发票搜索筛选">
+            <label className="invoice-keyword-search">
+              <span>搜索发票</span>
+              <input
+                type="search"
+                value={batchQuery}
+                placeholder="号码、金额、公司、项目、来源文件夹"
+                onChange={(event) => setBatchQuery(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>开票日期从</span>
+              <input type="date" value={batchFrom} onChange={(event) => setBatchFrom(event.target.value)} />
+            </label>
+            <label>
+              <span>到</span>
+              <input type="date" value={batchTo} onChange={(event) => setBatchTo(event.target.value)} />
+            </label>
+            <div className="invoice-search-actions">
+              <button type="button" onClick={() => {
+                setBuyerProfileDraft(buyerProfile);
+                setBuyerProfileOpen(true);
+              }}>常用购买方</button>
+              <button type="button" onClick={() => setArchiveDialogOpen(true)}>历史档案</button>
+            </div>
+            <small>当前显示 {visibleInvoiceFiles.length}/{invoiceFiles.length} 份</small>
+          </div>
+
           <div className="file-groups">
             {groupedInvoiceFiles.map((group) => {
               const groupAmount = group.files
@@ -1225,6 +1477,7 @@ export default function Home() {
                       );
                       const duplicateInHistory =
                         Boolean(item.number) && historyNumbers.has(item.number);
+                      const qualityIssues = itemQualityIssues(item);
                       return (
                         <article
                           className={`file-card ${duplicateInBatch ? "duplicate" : ""}`}
@@ -1328,6 +1581,17 @@ export default function Home() {
                                 </select>
                               </label>
                             </div>
+                            <div className="invoice-detail-strip">
+                              <span>开票日期：{item.invoiceDate || "未识别"}</span>
+                              <span>购买方：{item.buyerName || "未识别"}</span>
+                              <span>税号：{item.buyerTaxId || "未识别"}</span>
+                            </div>
+                            {qualityIssues.length > 0 && (
+                              <div className="quality-issues" role="status">
+                                <strong>需要核对</strong>
+                                <span>{qualityIssues.join("；")}</span>
+                              </div>
+                            )}
                             <div
                               className={`rename-result ${isReady ? "ready" : ""} ${
                                 processing ? "processing" : ""
@@ -1556,7 +1820,7 @@ export default function Home() {
               <button
                 className="utility-button"
                 disabled={selectedPdfFiles.length < 2 || busyAction !== null}
-                onClick={mergeSelectedPdfs}
+                onClick={() => setMergeDialogOpen(true)}
               >
                 {busyAction === "merge" ? "正在合并" : `合并 PDF${selectedPdfFiles.length ? ` · ${selectedPdfFiles.length}份` : ""}`}
               </button>
@@ -1591,6 +1855,108 @@ export default function Home() {
           </div>
         </aside>
       </section>
+
+      {mergeDialogOpen && (
+        <div className="category-dialog-backdrop" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setMergeDialogOpen(false);
+        }}>
+          <section className="category-dialog merge-layout-dialog" role="dialog" aria-modal="true" aria-labelledby="merge-dialog-title">
+            <div className="category-dialog-heading">
+              <div><span>PDF 打印排版</span><h2 id="merge-dialog-title">选择每页放几张发票</h2></div>
+              <button type="button" aria-label="关闭合并设置" onClick={() => setMergeDialogOpen(false)}>×</button>
+            </div>
+            <div className="merge-layout-options">
+              {([1, 2, 4] as PdfInvoicesPerPage[]).map((count) => (
+                <button
+                  type="button"
+                  className={mergePerPage === count ? "active" : ""}
+                  key={count}
+                  onClick={() => setMergePerPage(count)}
+                >
+                  <span className={`merge-layout-preview layout-${count}`}>
+                    {Array.from({ length: count }, (_, index) => <i key={index} />)}
+                  </span>
+                  <strong>一页 {count} 张</strong>
+                  <small>{count === 1 ? "保持原页尺寸" : count === 2 ? "A4 上下排列" : "A4 四宫格排列"}</small>
+                </button>
+              ))}
+            </div>
+            <p className="excel-field-note">将按当前勾选顺序排版，共 {selectedPdfFiles.length} 份 PDF；不满一页时保留空位。</p>
+            <div className="category-dialog-footer">
+              <span>当前选择：一页 {mergePerPage} 张</span>
+              <div>
+                <button type="button" onClick={() => setMergeDialogOpen(false)}>取消</button>
+                <button type="button" className="confirm" onClick={() => void mergeSelectedPdfs(mergePerPage)}>生成并下载 PDF</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {buyerProfileOpen && (
+        <div className="category-dialog-backdrop" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setBuyerProfileOpen(false);
+        }}>
+          <section className="category-dialog buyer-profile-dialog" role="dialog" aria-modal="true" aria-labelledby="buyer-profile-title">
+            <div className="category-dialog-heading">
+              <div><span>本机核对档案</span><h2 id="buyer-profile-title">设置常用购买方</h2></div>
+              <button type="button" aria-label="关闭购买方设置" onClick={() => setBuyerProfileOpen(false)}>×</button>
+            </div>
+            <div className="buyer-profile-fields">
+              <label>购买方完整名称<input value={buyerProfileDraft.name} placeholder="请按营业执照或发票填写完整名称" onChange={(event) => setBuyerProfileDraft((current) => ({ ...current, name: event.target.value }))} /></label>
+              <label>购买方纳税人识别号<input value={buyerProfileDraft.taxId} placeholder="15位旧税号或18位统一社会信用代码" onChange={(event) => setBuyerProfileDraft((current) => ({ ...current, taxId: event.target.value }))} /></label>
+            </div>
+            {buyerProfileDraft.taxId && !validBuyerTaxId(buyerProfileDraft.taxId) && <p className="buyer-profile-warning">税号格式异常：应为15位数字或18位统一社会信用代码。</p>}
+            <p className="excel-field-note">档案只保存在当前浏览器。识别结果不一致时仅提示原因，不会自动改写票面信息。</p>
+            <p className="buyer-profile-official">需要进一步人工核验时，可前往<a href="https://inv-veri.chinatax.gov.cn/" target="_blank" rel="noreferrer">国家税务总局全国增值税发票查验平台</a>。该平台可能要求验证码，本工具不会代填或自动修改结果。</p>
+            <div className="category-dialog-footer">
+              <span>{buyerProfile.name ? "已启用购买方精确核对" : "尚未设置常用购买方"}</span>
+              <div>
+                <button type="button" onClick={() => setBuyerProfileOpen(false)}>取消</button>
+                <button type="button" className="confirm" disabled={Boolean(buyerProfileDraft.taxId) && !validBuyerTaxId(buyerProfileDraft.taxId)} onClick={() => saveBuyerProfile(buyerProfileDraft)}>保存本机档案</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {archiveDialogOpen && (
+        <div className="invoice-preview-backdrop" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setArchiveDialogOpen(false);
+        }}>
+          <section className="invoice-preview-dialog archive-dialog" role="dialog" aria-modal="true" aria-labelledby="archive-dialog-title">
+            <div className="invoice-preview-heading">
+              <div><span>浏览器本地保存</span><h2 id="archive-dialog-title">历史发票档案</h2></div>
+              <button type="button" aria-label="关闭历史档案" onClick={() => setArchiveDialogOpen(false)}>×</button>
+            </div>
+            <div className="archive-toolbar">
+              <label className="archive-search"><span>关键词</span><input type="search" value={archiveQuery} placeholder="号码、金额、公司、项目、来源" onChange={(event) => setArchiveQuery(event.target.value)} /></label>
+              <label><span>时间类型</span><select value={archiveDateField} onChange={(event) => setArchiveDateField(event.target.value as "invoiceDate" | "importedAt")}><option value="invoiceDate">开票日期</option><option value="importedAt">导入时间</option></select></label>
+              <label><span>从</span><input type={archiveDateField === "importedAt" ? "datetime-local" : "date"} value={archiveFrom} onChange={(event) => setArchiveFrom(event.target.value)} /></label>
+              <label><span>到</span><input type={archiveDateField === "importedAt" ? "datetime-local" : "date"} value={archiveTo} onChange={(event) => setArchiveTo(event.target.value)} /></label>
+              <div className="archive-toolbar-actions">
+                <input ref={archiveImportRef} type="file" accept="application/json,.json" onChange={handleArchiveImport} />
+                <button type="button" onClick={() => archiveImportRef.current?.click()}>导入备份</button>
+                <button type="button" disabled={archiveRecords.length === 0} onClick={exportArchiveBackup}>导出备份</button>
+                <button type="button" disabled={archiveRecords.length === 0} onClick={() => void clearArchive()}>清空档案</button>
+              </div>
+            </div>
+            <div className="archive-summary">找到 {filteredArchiveRecords.length}/{archiveRecords.length} 条记录 · 仅保存识别信息，不保存原 PDF 或图片</div>
+            <div className="archive-record-list">
+              {filteredArchiveRecords.length === 0 ? <p>暂无符合条件的本机档案。</p> : filteredArchiveRecords.map((record) => (
+                <article key={record.id} className={record.issues.length > 0 ? "has-issues" : ""}>
+                  <div><strong>{record.generatedName}</strong><span>{record.category} · ¥{record.amount || "未识别"}</span></div>
+                  <div><span>开票：{record.invoiceDate || "未识别"}</span><span>导入：{formatHistoryTime(record.importedAt)}</span></div>
+                  <div><span>购买方：{record.buyerName || "未识别"}</span><span>销售方：{record.sellerName || "未识别"}</span></div>
+                  <small title={record.source}>来源：{record.source}</small>
+                  {record.issues.length > 0 && <em>问题：{record.issues.join("；")}</em>}
+                  <button type="button" onClick={() => void removeArchiveRecord(record.id)}>删除</button>
+                </article>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
 
       {excelDialogOpen && (
         <div
@@ -1930,8 +2296,8 @@ export default function Home() {
                         </label>
                         <strong title={item.file.name}>{item.file.name}</strong>
                         <span>来源：{item.source || "直接添加"}</span>
-                        {!isDownloadableInvoice(item) && (
-                          <span className="incomplete-reason">原因：{incompleteReason(item)}</span>
+                        {itemQualityIssues(item).length > 0 && (
+                          <span className="incomplete-reason">原因：{itemQualityIssues(item).join("；")}</span>
                         )}
                       </div>
                       <InvoiceDocumentPreview item={item} />
@@ -1997,8 +2363,8 @@ export default function Home() {
                       </strong>
                       <span>分类：{item.category}</span>
                       <span>来源：{item.source || "直接添加"}</span>
-                      {!isDownloadableInvoice(item) && (
-                        <span className="incomplete-reason">原因：{incompleteReason(item)}</span>
+                      {itemQualityIssues(item).length > 0 && (
+                        <span className="incomplete-reason">原因：{itemQualityIssues(item).join("；")}</span>
                       )}
                     </button>
                   ))}
