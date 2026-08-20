@@ -228,6 +228,8 @@ function InvoiceDocumentPreview({ item }: { item: InvoiceFile }) {
 
   useEffect(() => {
     const nextUrl = URL.createObjectURL(item.file);
+    // The preview URL is created after the browser receives the selected file.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setUrl(nextUrl);
     return () => URL.revokeObjectURL(nextUrl);
   }, [item]);
@@ -522,6 +524,8 @@ export default function Home() {
       const savedProfile = window.localStorage.getItem(BUYER_PROFILE_KEY);
       if (savedProfile) {
         const profile = JSON.parse(savedProfile) as BuyerProfile;
+        // Local profile data is available only after the browser has mounted.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setBuyerProfile(profile);
         setBuyerProfileDraft(profile);
       }
