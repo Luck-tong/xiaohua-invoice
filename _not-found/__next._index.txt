@@ -2,4 +2,4 @@
 2:I[4441,[],""]
 3:I[4461,[],""]
 :HL["/xiaohua-invoice/_next/static/css/e72242f7bd31952a.css","style"]
-0:{"rsc":["$","$1","c",{"children":[[["$","link","0",{"rel":"stylesheet","href":"/xiaohua-invoice/_next/static/css/e72242f7bd31952a.css","precedence":"next"}]],["$","html",null,{"lang":"zh-CN","children":["$","body",null,{"children":["$","$L2",null,{"parallelRouterKey":"children","template":["$","$L3",null,{}]}]}]}]]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"rCTCmNaKvqPEoji0H-IgY"}
+0:{"rsc":["$","$1","c",{"children":[[["$","link","0",{"rel":"stylesheet","href":"/xiaohua-invoice/_next/static/css/e72242f7bd31952a.css","precedence":"next"}]],["$","html",null,{"lang":"zh-CN","children":["$","body",null,{"children":["$","$L2",null,{"parallelRouterKey":"children","template":["$","$L3",null,{}]}]}]}]]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"kKoJxJJPlG-dCph4COZm4"}
