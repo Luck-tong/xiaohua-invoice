@@ -1,5 +1,5 @@
 1:"$Sreact.fragment"
 2:I[4441,[],""]
 3:I[4461,[],""]
-:HL["/xiaohua-invoice/_next/static/css/ecd4cac1ec104953.css","style"]
-0:{"rsc":["$","$1","c",{"children":[[["$","link","0",{"rel":"stylesheet","href":"/xiaohua-invoice/_next/static/css/ecd4cac1ec104953.css","precedence":"next"}]],["$","html",null,{"lang":"zh-CN","children":["$","body",null,{"children":["$","$L2",null,{"parallelRouterKey":"children","template":["$","$L3",null,{}]}]}]}]]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"r_yRYDoZgEcPfWNwwH4NB"}
+:HL["/xiaohua-invoice/_next/static/css/9bfb65fa7c36bcb6.css","style"]
+0:{"rsc":["$","$1","c",{"children":[[["$","link","0",{"rel":"stylesheet","href":"/xiaohua-invoice/_next/static/css/9bfb65fa7c36bcb6.css","precedence":"next"}]],["$","html",null,{"lang":"zh-CN","children":["$","body",null,{"children":["$","$L2",null,{"parallelRouterKey":"children","template":["$","$L3",null,{}]}]}]}]]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"1N5Xh2mY8SoCWJ0e6DxpA"}
