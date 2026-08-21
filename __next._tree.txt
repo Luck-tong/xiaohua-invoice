@@ -1,2 +1,2 @@
-:HL["/xiaohua-invoice/_next/static/css/4ff79e382a7f7f4a.css","style"]
-0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}},"staleTime":300,"buildId":"2hIw3thS4a5Z_lDDDvgRX"}
+:HL["/xiaohua-invoice/_next/static/css/fc77d9d6689a9907.css","style"]
+0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}},"staleTime":300,"buildId":"rAO-vNP0CRo9gvTz4e4yF"}
