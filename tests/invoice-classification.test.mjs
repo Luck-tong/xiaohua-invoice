@@ -145,6 +145,16 @@ test("extracts parties and totals from flattened PDF token order", () => {
   assert.equal(result.taxAmount, "16.52");
 });
 
+test("reads buyer details when a PDF separates every party label with spaces", () => {
+  const result = parseInvoiceText(
+    "购 买 方 信 息 名 称 : 上 海 市 建 纬 律 师 事 务 所 统 一 社 会 信 用 代 码 / 纳 税 人 识 别 号 : 31310000425013819A 销 售 方 信 息 名 称 : 宁 夏 苏 黄 酒 店 管 理 有 限 公 司 统 一 社 会 信 用 代 码 / 纳 税 人 识 别 号 : 91640181MA76NMG29L 项 目 名 称 价 税 合 计（小写）306.00",
+    "26642000000338479321.pdf",
+  );
+
+  assert.equal(result.buyerName, "上海市建纬律师事务所");
+  assert.equal(result.buyerTaxId, "31310000425013819A");
+});
+
 test("reads a spaced railway ticket price from OCR text", () => {
   const result = parseInvoiceText(
     "发票号码：26469151444000199953 票 价： ￥ 68.00",

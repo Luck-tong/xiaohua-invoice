@@ -287,7 +287,7 @@ function invoiceTotalAmount(text: string) {
   return "";
 }
 
-function cleanPartyName(value: string) {
+function cleanPartyName(value = "") {
   return value
     .replace(/^(?:名称|名\s*称)[:：]?/g, "")
     .replace(/(?:统一社会信用代码|纳税人识别号).*$/g, "")
@@ -297,6 +297,7 @@ function cleanPartyName(value: string) {
 
 function invoiceParties(text: string) {
   const partyArea = text.split(/项目\s*名\s*称|货物或应税劳务/)[0] ?? text;
+  const compactPartyArea = partyArea.replace(/\s+/g, "");
   const taxIds = [...text.matchAll(/(?<![0-9A-Z])[0-9A-Z]{15,20}(?![0-9A-Z])/gi)]
     .map((match) => match[0].toUpperCase())
     .filter((value) => value.length === 15 || value.length === 18);
@@ -311,6 +312,12 @@ function invoiceParties(text: string) {
   )?.[1];
   const sellerName = partyArea.match(
     /销售方信息[\s\S]{0,40}?(?:名称|名\s*称)\s*[:：]\s*([\s\S]{2,100}?)(?=\s*(?:购买方信息|统一社会信用代码|纳税人识别号|项目\s*名\s*称|$))/i,
+  )?.[1];
+  const compactBuyerName = compactPartyArea.match(
+    /购买方信息(?:名称:)?(.{2,100}?)(?=统一社会信用代码(?:\/纳税人识别号)?|纳税人识别号|销售方信息|项目名称)/i,
+  )?.[1];
+  const compactSellerName = compactPartyArea.match(
+    /销售方信息(?:名称:)?(.{2,100}?)(?=统一社会信用代码(?:\/纳税人识别号)?|纳税人识别号|购买方信息|项目名称|$)/i,
   )?.[1];
 
   const invoiceNumberMatch = text.match(/(?<!\d)\d{20}(?!\d)/);
@@ -333,9 +340,13 @@ function invoiceParties(text: string) {
   }
 
   return {
-    buyerName: cleanPartyName(buyerName ?? names[0] ?? flattenedBuyerName),
+    buyerName: [buyerName, compactBuyerName, names[0], flattenedBuyerName]
+      .map((value) => cleanPartyName(value))
+      .find(Boolean) ?? "",
     buyerTaxId: taxIds[0] ?? "",
-    sellerName: cleanPartyName(sellerName ?? names[1] ?? flattenedSellerName),
+    sellerName: [sellerName, compactSellerName, names[1], flattenedSellerName]
+      .map((value) => cleanPartyName(value))
+      .find(Boolean) ?? "",
     sellerTaxId: taxIds[1] ?? "",
   };
 }

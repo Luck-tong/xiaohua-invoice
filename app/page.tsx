@@ -40,10 +40,13 @@ import { mergeInvoicePdfBytes } from "./pdf-layout";
 import type { PdfInvoicesPerPage } from "./pdf-layout";
 import {
   buyerValidationIssues,
-  EMPTY_BUYER_PROFILE,
+  DEFAULT_BUYER_PROFILE,
   validBuyerTaxId,
 } from "./buyer-validation";
 import type { BuyerProfile } from "./buyer-validation";
+import {
+  compareInvoiceBatches,
+} from "./invoice-comparison";
 import {
   clearArchiveRecords,
   deleteArchiveRecord,
@@ -101,7 +104,10 @@ type PreviewDialog = {
   duplicateKey?: string;
   showGeneratedNames?: boolean;
   categoryFilter?: string;
+  qualityFilter?: "" | "errors";
 };
+
+type ComparisonSide = "left" | "right";
 
 const HISTORY_KEY = "piaoli-download-history";
 const BUYER_PROFILE_KEY = "flower-buyer-profile";
@@ -284,8 +290,8 @@ export default function Home() {
   const [excelDialogOpen, setExcelDialogOpen] = useState(false);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [mergePerPage, setMergePerPage] = useState<PdfInvoicesPerPage>(1);
-  const [buyerProfile, setBuyerProfile] = useState<BuyerProfile>(EMPTY_BUYER_PROFILE);
-  const [buyerProfileDraft, setBuyerProfileDraft] = useState<BuyerProfile>(EMPTY_BUYER_PROFILE);
+  const [buyerProfile, setBuyerProfile] = useState<BuyerProfile>(DEFAULT_BUYER_PROFILE);
+  const [buyerProfileDraft, setBuyerProfileDraft] = useState<BuyerProfile>(DEFAULT_BUYER_PROFILE);
   const [buyerProfileOpen, setBuyerProfileOpen] = useState(false);
   const [archiveRecords, setArchiveRecords] = useState<InvoiceArchiveRecord[]>([]);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
@@ -293,6 +299,16 @@ export default function Home() {
   const [archiveDateField, setArchiveDateField] = useState<"invoiceDate" | "importedAt">("invoiceDate");
   const [archiveFrom, setArchiveFrom] = useState("");
   const [archiveTo, setArchiveTo] = useState("");
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [historyFrom, setHistoryFrom] = useState("");
+  const [historyTo, setHistoryTo] = useState("");
+  const [comparisonOpen, setComparisonOpen] = useState(false);
+  const [comparisonLeft, setComparisonLeft] = useState<InvoiceFile[]>([]);
+  const [comparisonRight, setComparisonRight] = useState<InvoiceFile[]>([]);
+  const [comparisonLeftSelected, setComparisonLeftSelected] = useState<Set<string>>(() => new Set());
+  const [comparisonRightSelected, setComparisonRightSelected] = useState<Set<string>>(() => new Set());
+  const [comparisonDuplicateDeleteIds, setComparisonDuplicateDeleteIds] = useState<Set<string>>(() => new Set());
+  const [comparisonDragging, setComparisonDragging] = useState<ComparisonSide | null>(null);
   const [batchQuery, setBatchQuery] = useState("");
   const [batchFrom, setBatchFrom] = useState("");
   const [batchTo, setBatchTo] = useState("");
@@ -313,6 +329,8 @@ export default function Home() {
   const inputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const archiveImportRef = useRef<HTMLInputElement>(null);
+  const comparisonLeftInputRef = useRef<HTMLInputElement>(null);
+  const comparisonRightInputRef = useRef<HTMLInputElement>(null);
   const processingQueueRef = useRef(createTaskQueue(3));
 
   const invoiceFiles = useMemo(
@@ -344,8 +362,6 @@ export default function Home() {
     () => invoiceFiles.filter((item) => !isDownloadableInvoice(item)),
     [invoiceFiles],
   );
-
-  const incompleteErrorFiles = incompleteFiles;
 
   const selectedReadyFiles = useMemo(
     () => downloadableFiles.filter((item) => selectedIds.has(item.id)),
@@ -438,9 +454,13 @@ export default function Home() {
     return [...new Set(issues)];
   }
 
-  // “错误组数”只统计未识别完成的文件，避免与已识别数量重复。
-  // 购买方、重复和命名核对问题仍会显示在结果卡片与历史档案中。
-  const errorFiles = incompleteErrorFiles;
+  function comparisonItemIssues(item: InvoiceFile) {
+    const issues = buyerValidationIssues(item, buyerProfile);
+    if (!isDownloadableInvoice(item)) issues.unshift(incompleteReason(item));
+    return [...new Set(issues)];
+  }
+
+  const errorFiles = invoiceFiles.filter((item) => itemQualityIssues(item).length > 0);
 
   const filteredArchiveRecords = useMemo(
     () => filterArchiveRecords(archiveRecords, {
@@ -450,6 +470,39 @@ export default function Home() {
       to: archiveTo,
     }),
     [archiveDateField, archiveFrom, archiveQuery, archiveRecords, archiveTo],
+  );
+
+  const filteredHistory = useMemo(
+    () => history.filter((entry) => {
+      const day = entry.createdAt.slice(0, 10);
+      return (!historyFrom || day >= historyFrom) && (!historyTo || day <= historyTo);
+    }),
+    [history, historyFrom, historyTo],
+  );
+
+  const comparisonLeftReady = useMemo(
+    () => comparisonLeft.filter(isDownloadableInvoice),
+    [comparisonLeft],
+  );
+  const comparisonRightReady = useMemo(
+    () => comparisonRight.filter(isDownloadableInvoice),
+    [comparisonRight],
+  );
+  const comparisonLeftSelectedReady = useMemo(
+    () => comparisonLeftReady.filter((item) => comparisonLeftSelected.has(item.id)),
+    [comparisonLeftReady, comparisonLeftSelected],
+  );
+  const comparisonRightSelectedReady = useMemo(
+    () => comparisonRightReady.filter((item) => comparisonRightSelected.has(item.id)),
+    [comparisonRightReady, comparisonRightSelected],
+  );
+  const comparison = useMemo(
+    () => compareInvoiceBatches(comparisonLeftReady, comparisonRightReady),
+    [comparisonLeftReady, comparisonRightReady],
+  );
+  const comparisonItems = useMemo(
+    () => [...comparisonLeft, ...comparisonRight],
+    [comparisonLeft, comparisonRight],
   );
 
   useEffect(() => {
@@ -524,13 +577,20 @@ export default function Home() {
       const savedProfile = window.localStorage.getItem(BUYER_PROFILE_KEY);
       if (savedProfile) {
         const profile = JSON.parse(savedProfile) as BuyerProfile;
+        const savedOrDefault = profile.name || profile.taxId ? profile : DEFAULT_BUYER_PROFILE;
         // Local profile data is available only after the browser has mounted.
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        setBuyerProfile(profile);
-        setBuyerProfileDraft(profile);
+        setBuyerProfile(savedOrDefault);
+        setBuyerProfileDraft(savedOrDefault);
+        if (savedOrDefault === DEFAULT_BUYER_PROFILE) {
+          window.localStorage.setItem(BUYER_PROFILE_KEY, JSON.stringify(DEFAULT_BUYER_PROFILE));
+        }
+      } else {
+        window.localStorage.setItem(BUYER_PROFILE_KEY, JSON.stringify(DEFAULT_BUYER_PROFILE));
       }
     } catch {
-      setBuyerProfile(EMPTY_BUYER_PROFILE);
+      setBuyerProfile(DEFAULT_BUYER_PROFILE);
+      setBuyerProfileDraft(DEFAULT_BUYER_PROFILE);
     }
     void loadArchiveRecords().then(setArchiveRecords).catch(() => setArchiveRecords([]));
   }, []);
@@ -727,6 +787,161 @@ export default function Home() {
         : undefined;
       return { file, source };
     }));
+  }
+
+  function updateComparisonItem(
+    side: ComparisonSide,
+    id: string,
+    patch: Partial<InvoiceFile>,
+  ) {
+    const setItems = side === "left" ? setComparisonLeft : setComparisonRight;
+    setItems((current) => current.map((item) =>
+      item.id === id ? { ...item, ...patch } : item,
+    ));
+  }
+
+  function processComparisonItem(side: ComparisonSide, item: InvoiceFile) {
+    processingQueueRef.current.add(async () => {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        updateComparisonItem(side, item.id, {
+          status: "reading", progress: 1, errorMessage: undefined,
+        });
+        try {
+          const result = await recognizeInvoice(item.file, (progress, stage) => {
+            updateComparisonItem(side, item.id, {
+              status: stage,
+              progress: Math.max(1, Math.min(100, progress)),
+            });
+          });
+          const number = result.number || item.number;
+          const amount = result.amount || item.amount;
+          updateComparisonItem(side, item.id, {
+            number, amount,
+            buyerName: result.buyerName, buyerTaxId: result.buyerTaxId,
+            sellerName: result.sellerName, sellerTaxId: result.sellerTaxId,
+            itemName: result.itemName, subtotal: result.subtotal,
+            taxAmount: result.taxAmount, invoiceDate: result.invoiceDate,
+            category: result.category, method: result.method, progress: 100,
+            status: isDownloadableInvoice({ number, amount, category: result.category })
+              ? "ready" : "review",
+          });
+          return;
+        } catch (error) {
+          if (attempt === 1) updateComparisonItem(side, item.id, {
+            status: "error", progress: 0, errorMessage: recognitionErrorMessage(error),
+          });
+        }
+      }
+    });
+  }
+
+  function processComparisonZip(side: ComparisonSide, item: InvoiceFile) {
+    updateComparisonItem(side, item.id, { status: "unzipping", progress: 1 });
+    unpackInvoiceZip(item.file).then((extracted) => {
+      if (extracted.length === 0) {
+        updateComparisonItem(side, item.id, { status: "error", progress: 0 });
+        return;
+      }
+      const children = extracted.map(({ file, sourcePath }) => createItem(
+        file,
+        sourcePath ? `${item.file.name} › ${sourcePath}` : item.file.name,
+      ));
+      const setItems = side === "left" ? setComparisonLeft : setComparisonRight;
+      const setSelected = side === "left" ? setComparisonLeftSelected : setComparisonRightSelected;
+      setItems((current) => {
+        const index = current.findIndex((candidate) => candidate.id === item.id);
+        if (index < 0) return current;
+        const next = [...current];
+        next.splice(index, 1, ...children);
+        return next;
+      });
+      setSelected((current) => {
+        const next = new Set(current);
+        next.delete(item.id);
+        children.forEach((child) => next.add(child.id));
+        return next;
+      });
+      children.forEach((child) => processComparisonItem(side, child));
+    }).catch(() => updateComparisonItem(side, item.id, { status: "error", progress: 0 }));
+  }
+
+  function addComparisonFiles(side: ComparisonSide, list: FileList | File[]) {
+    const items = Array.from(list)
+      .filter((file) => /(\.pdf|\.png|\.jpe?g|\.webp|\.zip)$/i.test(file.name))
+      .map((file) => createItem(file, side === "left" ? "左侧比对" : "右侧比对"));
+    if (items.length === 0) return;
+    const setItems = side === "left" ? setComparisonLeft : setComparisonRight;
+    const setSelected = side === "left" ? setComparisonLeftSelected : setComparisonRightSelected;
+    setItems((current) => [...current, ...items]);
+    setSelected((current) => new Set([
+      ...current,
+      ...items.filter((item) => !isZipFile(item.file)).map((item) => item.id),
+    ]));
+    items.forEach((item) => {
+      if (isZipFile(item.file)) processComparisonZip(side, item);
+      else processComparisonItem(side, item);
+    });
+  }
+
+  function handleComparisonInput(side: ComparisonSide, event: ChangeEvent<HTMLInputElement>) {
+    if (event.target.files) addComparisonFiles(side, event.target.files);
+    event.target.value = "";
+  }
+
+  function handleComparisonDrop(side: ComparisonSide, event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setComparisonDragging(null);
+    addComparisonFiles(side, event.dataTransfer.files);
+  }
+
+  function toggleComparisonSelection(side: ComparisonSide, id: string) {
+    const setSelected = side === "left" ? setComparisonLeftSelected : setComparisonRightSelected;
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function removeComparisonIds(ids: Set<string>) {
+    setComparisonLeft((current) => current.filter((item) => !ids.has(item.id)));
+    setComparisonRight((current) => current.filter((item) => !ids.has(item.id)));
+    setComparisonLeftSelected((current) => new Set([...current].filter((id) => !ids.has(id))));
+    setComparisonRightSelected((current) => new Set([...current].filter((id) => !ids.has(id))));
+    setComparisonDuplicateDeleteIds((current) => new Set([...current].filter((id) => !ids.has(id))));
+  }
+
+  function deleteComparisonFile(side: ComparisonSide, item: InvoiceFile) {
+    if (!window.confirm(`从本次比对中移除“${item.file.name}”吗？原文件不会被删除。`)) return;
+    removeComparisonIds(new Set([item.id]));
+  }
+
+  function toggleComparisonDuplicateDelete(id: string) {
+    setComparisonDuplicateDeleteIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function deleteSelectedComparisonDuplicates() {
+    if (comparisonDuplicateDeleteIds.size === 0) return;
+    const removesAllOfAGroup = comparison.duplicateGroups.some((group) => {
+      const ids = [...group.leftIds, ...group.rightIds];
+      return ids.some((id) => comparisonDuplicateDeleteIds.has(id)) &&
+        ids.every((id) => comparisonDuplicateDeleteIds.has(id));
+    });
+    if (removesAllOfAGroup) {
+      setSaveNotice("每组重复发票至少保留 1 张，请重新选择。");
+      return;
+    }
+    const count = comparisonDuplicateDeleteIds.size;
+    if (!window.confirm(`第一次确认：从本次比对中移除 ${count} 张重复发票吗？`)) return;
+    if (!window.confirm(`第二次确认：这些发票将不参与后续保存、ZIP、Excel 和 PDF 合并。确定删除 ${count} 张吗？`)) return;
+    removeComparisonIds(comparisonDuplicateDeleteIds);
+    setSaveNotice(`已从本次比对中移除 ${count} 张重复发票。`);
   }
 
   function handleInput(event: ChangeEvent<HTMLInputElement>) {
@@ -1174,6 +1389,139 @@ export default function Home() {
     }
   }
 
+  function comparisonSelection(side: ComparisonSide) {
+    return side === "left" ? comparisonLeftSelectedReady : comparisonRightSelectedReady;
+  }
+
+  function saveComparisonFiles(side: ComparisonSide) {
+    const ready = comparisonSelection(side);
+    if (ready.length === 0) {
+      setSaveNotice("请先勾选该侧要保存的发票。");
+      return;
+    }
+    void saveFilesToFolder(ready);
+  }
+
+  async function downloadComparisonZip(side: ComparisonSide) {
+    const ready = comparisonSelection(side);
+    if (ready.length < 2) {
+      setSaveNotice("请在该侧至少勾选 2 份发票再打包 ZIP。");
+      return;
+    }
+    setBusyAction("zip");
+    try {
+      const { default: JSZip } = await import("jszip");
+      const zip = new JSZip();
+      const usedNames = new Map<string, number>();
+      const names = ready.map((item) => uniqueArchiveName(generatedName(item), usedNames));
+      ready.forEach((item, index) => zip.file(names[index], item.file));
+      downloadBlob(
+        await zip.generateAsync({ type: "blob", compression: "DEFLATE" }),
+        `比对${side === "left" ? "左侧" : "右侧"}发票（${ready.length}份）.zip`,
+      );
+      saveHistory([{
+        id: `${Date.now()}-${Math.random()}`,
+        createdAt: new Date().toISOString(), files: names,
+        location: "比对 ZIP 下载（浏览器默认下载位置）", action: "zip",
+      }, ...history]);
+    } catch {
+      setSaveNotice("比对 ZIP 打包失败，请重试。");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function exportComparisonLedger(side: ComparisonSide) {
+    const ready = comparisonSelection(side);
+    if (ready.length === 0) return;
+    setBusyAction("excel");
+    try {
+      const XLSX = await import("xlsx");
+      const ledgerItems: InvoiceLedgerInput[] = ready.map((item) => ({
+        originalName: item.file.name, currentName: generatedName(item),
+        number: item.number, amount: item.amount, buyerName: item.buyerName,
+        buyerTaxId: item.buyerTaxId, sellerName: item.sellerName,
+        sellerTaxId: item.sellerTaxId, itemName: item.itemName,
+        subtotal: item.subtotal, taxAmount: item.taxAmount,
+      }));
+      const fields = INVOICE_LEDGER_FIELDS;
+      const rows = buildInvoiceLedgerRows(ledgerItems);
+      const sheet = XLSX.utils.aoa_to_sheet([fields.map((field) => field.label), ...rows]);
+      sheet["!cols"] = fields.map((field) => ({ wch: field.width }));
+      sheet["!autofilter"] = { ref: `A1:${XLSX.utils.encode_col(fields.length - 1)}${rows.length + 1}` };
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, sheet, "发票台账");
+      const raw = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+      const styled = await styleInvoiceLedgerXlsx(
+        raw, rows.length, fields.length, ledgerItems.map(invoiceLedgerRowIncomplete),
+      );
+      downloadBlob(new Blob([styled], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }), `比对${side === "left" ? "左侧" : "右侧"}发票台账（${ready.length}份）.xlsx`);
+      saveHistory([{
+        id: `${Date.now()}-${Math.random()}`,
+        createdAt: new Date().toISOString(), files: ready.map(generatedName),
+        location: "比对 Excel 下载（浏览器默认下载位置）", action: "excel",
+      }, ...history]);
+    } catch {
+      setSaveNotice("比对 Excel 导出失败，请重试。");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function mergeComparisonPdfs(side: ComparisonSide) {
+    const ready = comparisonSelection(side).filter((item) => /\.pdf$/i.test(item.file.name));
+    if (ready.length < 2) {
+      setSaveNotice("请在该侧至少勾选 2 份 PDF 发票再合并。");
+      return;
+    }
+    setBusyAction("merge");
+    try {
+      const bytes = await mergeInvoicePdfBytes(
+        await Promise.all(ready.map((item) => item.file.arrayBuffer())), 1,
+      );
+      downloadBlob(new Blob([new Uint8Array(bytes)], { type: "application/pdf" }),
+        `比对${side === "left" ? "左侧" : "右侧"}合并发票（${ready.length}份）.pdf`);
+      saveHistory([{
+        id: `${Date.now()}-${Math.random()}`,
+        createdAt: new Date().toISOString(), files: ready.map(generatedName),
+        location: "比对合并 PDF（浏览器默认下载位置）", action: "merge",
+      }, ...history]);
+    } catch {
+      setSaveNotice("比对 PDF 合并失败，请确认文件未加密或损坏。");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function exportComparisonResult() {
+    if (comparisonLeftReady.length === 0 || comparisonRightReady.length === 0) return;
+    try {
+      const XLSX = await import("xlsx");
+      const categoryRows = comparison.categories.map((item) => [
+        item.category, item.leftCount, item.leftAmount, item.rightCount, item.rightAmount,
+        item.rightCount - item.leftCount, item.rightAmount - item.leftAmount,
+      ]);
+      const duplicateRows = comparison.duplicateGroups.map((item) => [
+        item.number, item.amount, item.leftIds.length, item.rightIds.length,
+      ]);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+        ["分类", "左侧数量", "左侧金额", "右侧数量", "右侧金额", "数量变化", "金额变化"],
+        ...categoryRows,
+      ]), "分类比对");
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+        ["重复票号", "金额", "左侧份数", "右侧份数"], ...duplicateRows,
+      ]), "重复发票");
+      downloadBlob(new Blob([XLSX.write(workbook, { bookType: "xlsx", type: "array" })], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }), "发票比对结果.xlsx");
+    } catch {
+      setSaveNotice("比对结果导出失败，请重试。");
+    }
+  }
+
   const showPreviewSelectors = Boolean(
     previewDialog?.showGeneratedNames &&
     (previewDialog.mode === "single" || previewDialog.mode === "amounts"),
@@ -1183,11 +1531,14 @@ export default function Home() {
         (left, right) => left.localeCompare(right, "zh-CN"),
       )
     : [];
-  const filteredPreviewItems = showPreviewSelectors && previewDialog?.categoryFilter
+  const categoryPreviewItems = showPreviewSelectors && previewDialog?.categoryFilter
     ? previewDialog.items.filter(
         (item) => completedInvoiceFilterCategory(item) === previewDialog.categoryFilter,
       )
     : previewDialog?.items ?? [];
+  const filteredPreviewItems = previewDialog?.qualityFilter === "errors"
+    ? categoryPreviewItems.filter((item) => itemQualityIssues(item).length > 0)
+    : categoryPreviewItems;
   const activePreviewItem = filteredPreviewItems.find(
     (item) => item.id === previewDialog?.activeId,
   ) ?? filteredPreviewItems[0];
@@ -1274,6 +1625,10 @@ export default function Home() {
             保存下载
             <span>↓</span>
           </a>
+          <button type="button" className="header-action compare-action" onClick={() => setComparisonOpen(true)}>
+            发票比对
+            <span>⇄</span>
+          </button>
         </div>
       </header>
 
@@ -1445,8 +1800,9 @@ export default function Home() {
               <button type="button" onClick={() => {
                 setBuyerProfileDraft(buyerProfile);
                 setBuyerProfileOpen(true);
-              }}>常用购买方</button>
+              }}>常用</button>
               <button type="button" onClick={() => setArchiveDialogOpen(true)}>历史档案</button>
+              <button type="button" onClick={() => setComparisonOpen(true)}>发票比对</button>
             </div>
             <small>当前显示 {visibleInvoiceFiles.length}/{invoiceFiles.length} 份</small>
           </div>
@@ -1841,13 +2197,13 @@ export default function Home() {
           <div className="side-history" id="history">
             <div className="side-history-heading">
               <div><span className="kicker">本机日志</span><strong>最近处理</strong></div>
-              {history.length > 0 && <button onClick={clearHistory}>清空</button>}
+              <button type="button" onClick={() => setHistoryDialogOpen(true)}>按日期查询</button>
             </div>
             {history.length === 0 ? (
               <p className="side-history-empty">完成第一次下载后，记录会显示在这里。</p>
             ) : (
               <div className="side-history-list">
-                {history.slice(0, 6).map((entry) => (
+                {history.slice(0, 3).map((entry) => (
                   <article key={entry.id}>
                     <span>{formatHistoryTime(entry.createdAt)}</span>
                     <strong>{historyActionText(entry)}</strong>
@@ -1856,6 +2212,7 @@ export default function Home() {
                 ))}
               </div>
             )}
+            {history.length > 3 && <button type="button" className="side-history-more" onClick={() => setHistoryDialogOpen(true)}>查看全部 {history.length} 条记录</button>}
           </div>
         </aside>
       </section>
@@ -1920,6 +2277,115 @@ export default function Home() {
                 <button type="button" className="confirm" disabled={Boolean(buyerProfileDraft.taxId) && !validBuyerTaxId(buyerProfileDraft.taxId)} onClick={() => saveBuyerProfile(buyerProfileDraft)}>保存本机档案</button>
               </div>
             </div>
+          </section>
+        </div>
+      )}
+
+      {historyDialogOpen && (
+        <div className="invoice-preview-backdrop" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setHistoryDialogOpen(false);
+        }}>
+          <section className="invoice-preview-dialog history-dialog" role="dialog" aria-modal="true" aria-labelledby="history-dialog-title">
+            <div className="invoice-preview-heading">
+              <div><span>当前浏览器</span><h2 id="history-dialog-title">本机处理日志</h2></div>
+              <button type="button" aria-label="关闭本机日志" onClick={() => setHistoryDialogOpen(false)}>×</button>
+            </div>
+            <div className="history-toolbar">
+              <label>从<input type="date" value={historyFrom} onChange={(event) => setHistoryFrom(event.target.value)} /></label>
+              <label>到<input type="date" value={historyTo} onChange={(event) => setHistoryTo(event.target.value)} /></label>
+              <button type="button" onClick={() => { setHistoryFrom(""); setHistoryTo(""); }}>全部时间</button>
+              <button type="button" disabled={history.length === 0} onClick={clearHistory}>清空日志</button>
+            </div>
+            <div className="history-dialog-summary">找到 {filteredHistory.length}/{history.length} 条 · 只记录本机操作，不上传原始发票。</div>
+            <div className="history-dialog-list">
+              {filteredHistory.length === 0 ? <p>这个日期范围内暂无处理记录。</p> : filteredHistory.map((entry) => (
+                <article key={entry.id}>
+                  <div><span>{formatHistoryTime(entry.createdAt)}</span><strong>{historyActionText(entry)}</strong></div>
+                  {entry.location && <small>{entry.location}</small>}
+                  <p>{entry.files.join("、")}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {comparisonOpen && (
+        <div className="invoice-preview-backdrop" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setComparisonOpen(false);
+        }}>
+          <section className="invoice-preview-dialog comparison-dialog" role="dialog" aria-modal="true" aria-labelledby="comparison-dialog-title">
+            <div className="invoice-preview-heading">
+              <div><span>手动双栏识别</span><h2 id="comparison-dialog-title">发票比对</h2></div>
+              <div className="comparison-heading-note">左、右两侧分别拖入文件或 ZIP；比对内容不会写入本机历史。</div>
+              <button type="button" aria-label="关闭发票比对" onClick={() => setComparisonOpen(false)}>×</button>
+            </div>
+            <div className="comparison-batches">
+              {(["left", "right"] as ComparisonSide[]).map((side) => {
+                const items = side === "left" ? comparisonLeft : comparisonRight;
+                const selected = side === "left" ? comparisonLeftSelected : comparisonRightSelected;
+                const inputRef = side === "left" ? comparisonLeftInputRef : comparisonRightInputRef;
+                const label = side === "left" ? "左侧文件" : "右侧文件";
+                return (
+                  <section className="comparison-batch" key={side}>
+                    <input ref={inputRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.zip" onChange={(event) => handleComparisonInput(side, event)} />
+                    <div
+                      className={`comparison-dropzone ${comparisonDragging === side ? "dragging" : ""}`}
+                      onDragEnter={(event) => { event.preventDefault(); setComparisonDragging(side); }}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDragLeave={(event) => { if (event.currentTarget === event.target) setComparisonDragging(null); }}
+                      onDrop={(event) => handleComparisonDrop(side, event)}
+                    >
+                      <div><span>{label}</span><strong>{items.length} 份</strong></div>
+                      <p>拖入 PDF、图片或 ZIP</p>
+                      <button type="button" onClick={() => inputRef.current?.click()}>选择文件或 ZIP</button>
+                    </div>
+                    <div className="comparison-file-list">
+                      {items.length === 0 ? <p>尚未添加文件</p> : items.map((item) => {
+                        const issues = comparisonItemIssues(item);
+                        const ready = isDownloadableInvoice(item);
+                        return (
+                          <article key={item.id} className={issues.length ? "has-issues" : ""}>
+                            <label><input type="checkbox" checked={selected.has(item.id)} disabled={!ready} onChange={() => toggleComparisonSelection(side, item.id)} /></label>
+                            <div><strong title={item.file.name}>{item.file.name}</strong><span>{statusText(item)} · {item.category}</span>{issues.length > 0 && <em>原因：{issues.join("；")}</em>}</div>
+                            <button type="button" onClick={() => deleteComparisonFile(side, item)}>删除</button>
+                          </article>
+                        );
+                      })}
+                    </div>
+                    <div className="comparison-side-actions">
+                      <span>已选 {comparisonSelection(side).length}/{side === "left" ? comparisonLeftReady.length : comparisonRightReady.length}</span>
+                      <button type="button" disabled={comparisonSelection(side).length === 0 || busyAction !== null} onClick={() => saveComparisonFiles(side)}>保存</button>
+                      <button type="button" disabled={comparisonSelection(side).length < 2 || busyAction !== null} onClick={() => void downloadComparisonZip(side)}>ZIP</button>
+                      <button type="button" disabled={comparisonSelection(side).length === 0 || busyAction !== null} onClick={() => void exportComparisonLedger(side)}>Excel</button>
+                      <button type="button" disabled={comparisonSelection(side).filter((item) => /\.pdf$/i.test(item.file.name)).length < 2 || busyAction !== null} onClick={() => void mergeComparisonPdfs(side)}>合并 PDF</button>
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+            <section className="comparison-results">
+              <div className="comparison-results-heading"><div><span>识别完成后自动更新</span><h3>分类与重复发票比对</h3></div><button type="button" disabled={comparisonLeftReady.length === 0 || comparisonRightReady.length === 0} onClick={() => void exportComparisonResult()}>导出比对结果 Excel</button></div>
+              {comparisonLeftReady.length === 0 || comparisonRightReady.length === 0 ? <p className="comparison-empty">左右两侧各完成至少 1 份可用发票后，即可查看比对结果。</p> : <>
+                <div className="comparison-category-table">
+                  <div className="comparison-category-row comparison-category-head"><span>分类</span><span>左侧</span><span>右侧</span><span>变化</span></div>
+                  {comparison.categories.map((item) => <div className="comparison-category-row" key={item.category}><strong>{item.category}</strong><span>{item.leftCount} 份 · ¥{item.leftAmount.toFixed(2)}</span><span>{item.rightCount} 份 · ¥{item.rightAmount.toFixed(2)}</span><span>{item.rightCount - item.leftCount >= 0 ? "+" : ""}{item.rightCount - item.leftCount} 份 · ¥{(item.rightAmount - item.leftAmount).toFixed(2)}</span></div>)}
+                </div>
+                <div className="comparison-duplicates">
+                  <div><strong>重复发票</strong><span>票号和金额完全一致才可清理；每组至少保留 1 张。</span></div>
+                  {comparison.duplicateGroups.length === 0 ? <p>未发现可清理的重复发票。</p> : comparison.duplicateGroups.map((group) => {
+                    const ids = [...group.leftIds, ...group.rightIds];
+                    const selectedCount = ids.filter((id) => comparisonDuplicateDeleteIds.has(id)).length;
+                    return <article key={group.key}><header><strong>{group.number}（¥{group.amount}）</strong><span>左侧 {group.leftIds.length} 份 · 右侧 {group.rightIds.length} 份</span></header>{ids.map((id) => {
+                      const item = comparisonItems.find((candidate) => candidate.id === id);
+                      if (!item) return null;
+                      return <label key={id}><input type="checkbox" checked={comparisonDuplicateDeleteIds.has(id)} disabled={!comparisonDuplicateDeleteIds.has(id) && selectedCount >= ids.length - 1} onChange={() => toggleComparisonDuplicateDelete(id)} /><span>{item.file.name}</span></label>;
+                    })}</article>;
+                  })}
+                  {comparison.duplicateGroups.length > 0 && <button type="button" className="comparison-delete-duplicates" disabled={comparisonDuplicateDeleteIds.size === 0} onClick={deleteSelectedComparisonDuplicates}>删除选中重复发票（两次确认）</button>}
+                </div>
+              </>}
+            </section>
           </section>
         </div>
       )}
@@ -2209,9 +2675,13 @@ export default function Home() {
                         const categoryFilter = event.target.value;
                         const firstItem = categoryFilter
                           ? previewDialog.items.find(
-                              (item) => completedInvoiceFilterCategory(item) === categoryFilter,
+                              (item) =>
+                                completedInvoiceFilterCategory(item) === categoryFilter &&
+                                (previewDialog.qualityFilter !== "errors" || itemQualityIssues(item).length > 0),
                             )
-                          : previewDialog.items[0];
+                          : previewDialog.items.find(
+                              (item) => previewDialog.qualityFilter !== "errors" || itemQualityIssues(item).length > 0,
+                            );
                         setPreviewDialog((current) => current ? {
                           ...current,
                           categoryFilter,
@@ -2227,6 +2697,27 @@ export default function Home() {
                           ).length}）
                         </option>
                       ))}
+                    </select>
+                  </label>
+                  <label className="invoice-preview-filter">
+                    <span>状态筛选</span>
+                    <select
+                      value={previewDialog.qualityFilter ?? ""}
+                      onChange={(event) => {
+                        const qualityFilter = event.target.value as "" | "errors";
+                        const candidates = previewDialog.items.filter((item) =>
+                          (!previewDialog.categoryFilter || completedInvoiceFilterCategory(item) === previewDialog.categoryFilter) &&
+                          (qualityFilter !== "errors" || itemQualityIssues(item).length > 0),
+                        );
+                        setPreviewDialog((current) => current ? {
+                          ...current,
+                          qualityFilter,
+                          activeId: candidates[0]?.id,
+                        } : current);
+                      }}
+                    >
+                      <option value="">全部状态（{previewDialog.items.length}）</option>
+                      <option value="errors">错误发票（{previewDialog.items.filter((item) => itemQualityIssues(item).length > 0).length}）</option>
                     </select>
                   </label>
                   <div className="invoice-preview-current-file">

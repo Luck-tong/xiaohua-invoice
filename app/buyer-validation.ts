@@ -10,6 +10,10 @@ export type BuyerInvoiceFields = {
 };
 
 export const EMPTY_BUYER_PROFILE: BuyerProfile = { name: "", taxId: "" };
+export const DEFAULT_BUYER_PROFILE: BuyerProfile = {
+  name: "上海市建纬律师事务所",
+  taxId: "31310000425013819A",
+};
 
 function compact(value = "") {
   return value.replace(/\s+/g, "").toUpperCase();

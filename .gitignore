@@ -4,3 +4,4 @@ out/
 dist/
 .wrangler/
 *.log
+*.tsbuildinfo
